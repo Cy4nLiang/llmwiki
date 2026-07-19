@@ -24,11 +24,11 @@
   (g) eval_retrieval --check-golden:夹具 golden 零 error 零 warning(exit 0);
       现场造坏 golden(未知 type=warning + golden 非对象=结构错误)断言 exit 2;
   (h) 模拟升级一轮(M3 核心;Spec §10):tmp 内复制框架仓为 fw-next,改一个 frozen
-      工具(加注释行)+ 一个 render-once 模板(followups 加一行)+ bump 0.3.1 +
+      工具(加注释行)+ 一个 render-once 模板(followups 加一行)+ bump 1.0.1 +
       UPGRADING.md 顶插条目 + 重跑 gen_manifest;对 base 实例:
       (h1) --dry-run 全树逐文件比对零写入,计划列出上述文件;
       (h2) 实跑:frozen 干净覆盖、未被实例改过的 render-once 自动采用新版、
-           VERSION==0.3.1、framework/base/ 与 MANIFEST 快照刷新、lint 门禁 rc=0、
+           VERSION==1.0.1、framework/base/ 与 MANIFEST 快照刷新、lint 门禁 rc=0、
            wiki/log.md 新增 upgrade 条目(W-LOG-1);
       (h3) 冲突路(克隆实例):手改 render-once 再升级 → 原文件保留 +
            <file>.upgrade-new 生成 + exit 1;
@@ -37,7 +37,7 @@
       pipelines 段 → 关停;i18n_link.py 未配置语言对 exit 2;
   (j) manual 哨兵:base sync status 不再出「未声明适配器」警告(guide adapter=manual),
       peers 段与 framework_version 进 status --json;mf 实例 peers[0](hub→base)
-      可达、pages.jsonl 非空、报版本 skew(base 已升 0.3.1)。
+      可达、pages.jsonl 非空、报版本 skew(base 已升 1.0.1)。
 
 退出码:0 = 全部断言通过;1 = 任一断言失败(fail-fast,失败后保留 tmp 便于排查);
         2 = 用法/环境错误(夹具或框架文件缺失)。
@@ -81,12 +81,12 @@ ZERO_ERROR_CHECKS = ("broken_links", "fm_required", "fm_drift", "map_budget",
 
 # ---- (h) 模拟升级一轮的常数 --------------------------------------------------
 CUR_V = (FW / "framework" / "VERSION").read_text().strip()   # 框架当前版本(升级起点)
-NEXT_V = "0.3.1"                                # fw-next bump 到的版本
+NEXT_V = "1.0.1"                                # fw-next bump 到的版本
 UPG_DATE = "2026-07-19"                         # 升级簿记日期(log 条目/UPGRADING 落款)
 FROZEN_TOUCH = "tools/build_index.py"           # ① fw-next 改动的 frozen 工具
-FROZEN_MARK = "# fw-next: upgrade smoke marker(hello-wiki CI 注入,0.3.1)"
+FROZEN_MARK = "# fw-next: upgrade smoke marker(hello-wiki CI 注入,1.0.1)"
 TPL_TOUCH = "templates/wiki/followups.md"       # ② fw-next 改动的 render-once 模板
-TPL_MARK = "- 升级冒烟标记:0.3.1 模板新增行(hello-wiki CI 注入;纯文本非 wikilink)。"
+TPL_MARK = "- 升级冒烟标记:1.0.1 模板新增行(hello-wiki CI 注入;纯文本非 wikilink)。"
 INST_MARK = "<!-- 实例手改:本地补充条目(hello-wiki CI 注入,h3 冲突路) -->"
 FORK_MARK = "# 实例本地改动:fork 候选(hello-wiki CI 注入,h4 fork 路)"
 UPGRADING_ENTRY = """## %s — %s(判级:PATCH)
@@ -460,7 +460,7 @@ def phase_golden_check(ci: CI, base: Path, tmp: Path) -> None:
 
 
 def build_fw_next(ci: CI, tmp: Path) -> Path:
-    """(h0) tmp 内复制框架仓为 fw-next 并造 0.3.1 版:frozen 工具加注释行、
+    """(h0) tmp 内复制框架仓为 fw-next 并造 1.0.1 版:frozen 工具加注释行、
     followups 模板加一行、VERSION bump、UPGRADING.md 顶插条目、重跑 gen_manifest。"""
     print("\n[h0] fw-next 造版:frozen+模板各一处改动 → %s + UPGRADING + gen_manifest" % NEXT_V)
     fwn = tmp / "fw-next"
@@ -476,7 +476,7 @@ def build_fw_next(ci: CI, tmp: Path) -> Path:
                   encoding="utf-8")
 
     (fwn / "framework" / "VERSION").write_text(NEXT_V + "\n", encoding="utf-8")
-    upg = fwn / "framework" / "UPGRADING.md"   # ③ 条目区顶部插入 0.3.1 条目(新→旧)
+    upg = fwn / "framework" / "UPGRADING.md"   # ③ 条目区顶部插入 1.0.1 条目(新→旧)
     utxt = upg.read_text(encoding="utf-8")
     m = re.search(r"(?m)^## \d+\.\d+\.\d+", utxt)
     ci.check("fw-next UPGRADING.md 找到条目区插入点(首个版本条目)", m is not None,

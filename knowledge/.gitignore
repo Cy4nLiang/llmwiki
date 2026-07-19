@@ -1,0 +1,6 @@
+# llmwiki 实例默认(W-SEC-2:state/ 与凭证不入库)
+state/
+*.env
+.env.*
+__pycache__/
+.DS_Store

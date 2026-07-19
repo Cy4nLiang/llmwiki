@@ -11,7 +11,7 @@ description: 当用户要把 llmwiki 实例化成一个新知识库——说「�
 
 - **agent 只填值,不写正文**:所有模板正文由 `python3 tools/init_render.py` 确定性渲染;禁止手写或改写 CLAUDE.md、`_map`、rules、skills 的正文——同一份 config 渲染两次,产物必须逐字节相同。
 - config 写完先过 schema 校验(`schema/wiki.config.schema.json`,init_render 内置);报错改 config 重渲染,**不改产物**。
-- 收尾必跑冒烟:`python3 tools/lint_wiki.py --check-slots`——渲染产物零残留槽位标记(SLOT 占位符)才算完成。
+- 收尾必跑冒烟:`python3 tools/lint_wiki.py --check-slots --target <实例根>`(--target 必填;实例内即 `--target .`)——渲染产物零残留槽位标记才算完成。
 
 ## 模式选择
 
@@ -52,7 +52,7 @@ description: 当用户要把 llmwiki 实例化成一个新知识库——说「�
 <a id="embedded-mode"></a>
 
 1. 渲染根 = 宿主子目录(默认 `knowledge/`,第 1 问可改);实例全部文件收在该目录内,宿主根命名空间零污染(W-ARCH-3)。
-2. 宿主 CLAUDE.md **只追加**下方指针段,绝不覆盖、绝不改写其余内容。
+2. 宿主 CLAUDE.md **只追加**下方指针段,绝不覆盖、绝不改写其余内容;宿主无 AGENTS.md 时可选建 symlink → CLAUDE.md,已有则不动。
 
 ## 宿主 CLAUDE.md 指针段标准文本
 <a id="host-pointer-block"></a>
@@ -69,6 +69,6 @@ description: 当用户要把 llmwiki 实例化成一个新知识库——说「�
 
 ## 收尾与首批内容
 
-1. `python3 tools/lint_wiki.py --check-slots` 全绿;
+1. `python3 tools/lint_wiki.py --check-slots --target .` 全绿;
 2. 接内容:inbox 直投,或写 `tools/adapters/`(合同见 `adapters/CONTRACT.md`,骨架可抄 skeleton);
 3. **首批 ~10 源后**:回填 `_map` 读取档位表与决策表页名、写 `overview.md` 首版、跑 `/wiki-golden` 建评测基线(config 填偏靠它早期显形)。

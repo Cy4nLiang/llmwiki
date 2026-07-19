@@ -1,0 +1,9 @@
+# llmwiki .gitattributes
+# CI 与 sync 的 rolling_digest 断言按文件字节算 sha,行尾必须跨平台稳定:
+# 钉 LF,防止 Windows checkout 时 core.autocrlf 把夹具/实例 raw 快照改写成 CRLF 导致 digest 漂移。
+
+# hello-wiki CI 夹具(tests/run_ci.py 对其 rolling 快照做 digest 断言)
+tests/hello-wiki/** text eol=lf
+
+# dogfood 内嵌实例的 raw/ 快照(不可变源,digest 判新同样按字节)
+knowledge/raw/** text eol=lf

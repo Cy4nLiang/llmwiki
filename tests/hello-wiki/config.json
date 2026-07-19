@@ -1,6 +1,6 @@
 {
   "$schema": "schema/wiki.config.schema.json",
-  "framework_version": "0.3.0",
+  "framework_version": "1.0.0",
   "domain": {
     "name": "hello-wiki",
     "description": "hello-wiki 示例项目知识库(CI 合成夹具):一个虚构问候服务 greeter 的 ADR、踩坑记录、操作 how-to 与团队风格指南滚动快照——全部原创短文,零版权风险,专供框架回归测试。",

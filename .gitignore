@@ -5,6 +5,11 @@
 state/
 site/
 
+# dogfood 内嵌实例 knowledge/:wiki/ 与 raw/ 入库(浏览样例),运行态不入库。
+# 上面未锚定的 state/、site/ 已覆盖任意深度,这两行为显式声明,防未来锚定化改动误伤
+knowledge/state/
+knowledge/site/
+
 # 凭证与环境变量(W-SEC-2)
 *.env
 .env

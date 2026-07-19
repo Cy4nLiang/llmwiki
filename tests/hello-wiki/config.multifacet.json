@@ -1,6 +1,6 @@
 {
   "$schema": "schema/wiki.config.schema.json",
-  "framework_version": "0.3.0",
+  "framework_version": "1.0.0",
   "domain": {
     "name": "hello-wiki-mf",
     "description": "hello-wiki 示例项目知识库(multifacet 变体,CI 合成夹具):同一批合成内容,叠加 team 分面(infra/app,shard_index)与一条 peer 引用——覆盖条件模块矩阵 multi_facet + rolling_source + peers。",

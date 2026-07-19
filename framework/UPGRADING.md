@@ -35,6 +35,30 @@
 
 ---
 
+## 1.0.0 — 2026-07-20(判级:MINOR;首个稳定版)
+
+### 变更摘要
+M4 发布收口:CONTRIBUTING.md(两档 PR 政策/回流格式/脱敏 checklist)、.gitattributes(夹具与
+raw LF 钉死)、框架仓开发契约 CLAUDE.md + 内嵌 dogfood 示例实例 knowledge/(框架自身开发知识库:
+20 页、golden 10 题、真实基线 P 1.000 / R 0.633);镜像段函数化(upgrade.py 改 import
+init_render 的 compute_conds/stamp_dates/snapshot_manifest 单源,镜像仅旧版回退);
+dogfood 回流的协议缝隙修复(源页骨架补 created:/ingest_tier: 字段、raw_file/authors 口径、
+bulk 贡献 per-claim 粒度与 reduce 终裁权、wiki-init check-slots/--target 口径、
+embedded 宿主 AGENTS 注、playbook 三条补充裁定)。
+
+### 迁移清单(0.3.0 实例 → 1.0.0)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| W-PAGE-4/W-ING-1 | 模板增强 | 三方合并采用新 source-page 规则(新增 created:/ingest_tier: 字段说明);**存量源页**若缺 created: 会被全量 lint 报错,按 date_ingested 补齐 | render-once + instance 数据 |
+| — | 工具函数化 | frozen 覆盖 tools/{init_render,upgrade}.py(行为逐字节等价,PATCH 性质) | frozen |
+| — | skills/playbook 文案 | 三方合并自动采用(实例未改则零冲突) | render-once |
+
+### frozen 覆盖清单
+tools/{init_render,upgrade,gen_manifest}.py、evals/playbook.md。
+
+### 验收
+`python3 tests/run_ci.py` 全绿(119 断言);实例升级后全量 lint + golden 不回退(W-UPG-2)。
+
 ## 0.3.0 — 2026-07-20(判级:MINOR)
 
 ### 变更摘要

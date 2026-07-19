@@ -1,0 +1,43 @@
+{
+  "$schema": "schema/wiki.config.schema.json",
+  "framework_version": "1.0.0",
+  "domain": {
+    "name": "llmwiki-dev",
+    "description": "llmwiki 框架开发知识库:设计决策/踩坑/机制说明书",
+    "lang": "zh",
+    "trust_posture": "internal-authoritative"
+  },
+  "facets": [],
+  "pipelines": [
+    {
+      "name": "notes",
+      "kind": "push",
+      "raw_dir": "raw/inbox",
+      "prefix": "",
+      "source_kinds": ["adr", "pitfall", "howto", "decision"]
+    }
+  ],
+  "ingest_tiers": {
+    "default": "full",
+    "by_source_kind": {
+      "pitfall": "light"
+    },
+    "min_touch": {
+      "full": 5,
+      "light": 1
+    }
+  },
+  "typology_map": {
+    "source": "ADR/踩坑记录/how-to/决策记录",
+    "entity": "工具/组件",
+    "concept": "设计约定/机制",
+    "synthesis": "跨里程碑设计叙事",
+    "query": "开发问答"
+  },
+  "staleness": {
+    "by_source_kind": {
+      "howto": "365d"
+    }
+  },
+  "peers": []
+}
