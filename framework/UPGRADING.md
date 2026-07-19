@@ -35,6 +35,29 @@
 
 ---
 
+## 0.3.0 — 2026-07-20(判级:MINOR)
+
+### 变更摘要
+M3 质量层落位:升级工具 tools/upgrade.py(frozen hash 校验/render-once 三方合并/预备份/门禁/log 落账)、
+评测打包 evals/{golden.schema.json,question-types.md,playbook.md} + eval_retrieval 增 --check-golden 与
+answer_keys 化诚实判定、extras/{serve.py,i18n_link.py}(D7 可选组件)、adapter:"manual" 哨兵、
+CONTRACT 冻结 manifest 容器推荐形状 {"articles":{slug:{...}}}、sync status 增 peers 段(可达性+版本 skew)。
+
+### 迁移清单(0.2.0 实例 → 0.3.0)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| W-UPG-1/2 | 新增工具 | 本次升级本身即可用 upgrade.py 执行(实例无该工具时用新版仓的:`python3 <FW>/tools/upgrade.py --root . --framework <FW>`) | frozen |
+| — | 评测打包 | 已有 golden 的实例跑 `eval_retrieval.py --check-golden evals/golden.jsonl`,按 warning 收敛题型别名与 unanswerable 短锚点 | instance 数据 |
+| — | manual 哨兵 | 人工投放快照的 pull/rolling 管线可在 config 加 `"adapter": "manual"` 消除警告 | config |
+| W-XRF-1 | status 增强 | 无动作;`sync.py status` 自动多出 peers 段 | — |
+| — | extras | 无动作,可选组件按需取用(不拷入实例,从框架仓 --root 指实例运行) | — |
+
+### frozen 覆盖清单
+tools/*(含新增 upgrade.py)、evals/**、adapters/**(local_notes 容器键 items→articles,载入自动迁移)、extras/**。
+
+### 验收
+`python3 tests/run_ci.py` 全绿(框架仓,119 断言含模拟升级四路径);实例侧升级后 lint --manifest 零漂移 + golden 不回退(W-UPG-2)。
+
 ## 0.2.0 — 2026-07-19(判级:MINOR)
 
 ### 变更摘要

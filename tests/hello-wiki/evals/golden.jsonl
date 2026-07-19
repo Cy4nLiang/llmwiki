@@ -1,4 +1,4 @@
 {"qid": "q1-single-hop-default-greeting", "type": "single-hop", "question": "hello-wiki 的默认问候语是什么?", "golden": {"concepts/greeting-protocol": 2, "sources/2026-07-01-adr-greeting-default": 1}, "answer_keys": ["你好,世界"]}
-{"qid": "q2-how-do-i-add-language", "type": "how-do-I", "question": "怎么给 greeter 新增一门问候语言?", "golden": {"queries/how-to-add-greeting-language": 2, "sources/2026-07-08-howto-add-greeting-language": 1}, "answer_keys": ["locales/", "registry.txt", "make greet-test"]}
+{"qid": "q2-how-do-i-add-language", "type": "single-hop", "question": "怎么给 greeter 新增一门问候语言?", "golden": {"queries/how-to-add-greeting-language": 2, "sources/2026-07-08-howto-add-greeting-language": 1}, "answer_keys": ["locales/", "registry.txt", "make greet-test"]}
 {"qid": "q3-exact-fallback-chain", "type": "exact-verbatim", "question": "本地化回退链的精确顺序是什么?", "golden": {"concepts/localization-fallback": 2}, "answer_keys": ["zh → en → ascii"]}
-{"qid": "q4-unanswerable-deploy", "type": "unanswerable", "question": "hello-wiki 的生产部署流程是什么?", "golden": {}, "answer_keys": []}
+{"qid": "q4-unanswerable-deploy", "type": "unanswerable", "question": "hello-wiki 的生产部署流程是什么?", "golden": {}, "answer_keys": ["未收录"]}

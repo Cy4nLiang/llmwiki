@@ -120,8 +120,11 @@ def _manifest_path(root: Path, pl: dict) -> Path:
 def _load_manifest(root: Path, pl: dict) -> dict:
     p = _manifest_path(root, pl)
     if p.exists():
-        return json.loads(p.read_text(encoding="utf-8"))
-    return {"pipeline": pl["name"], "updated": None, "items": {}}
+        m = json.loads(p.read_text(encoding="utf-8"))
+        if "articles" not in m and "items" in m:   # 旧容器键兼容:载入即迁移(CONTRACT §4 冻结形状)
+            m["articles"] = m.pop("items")
+        return m
+    return {"pipeline": pl["name"], "updated": None, "articles": {}}
 
 
 def _save_manifest(root: Path, pl: dict, m: dict) -> None:
@@ -134,8 +137,8 @@ def _save_manifest(root: Path, pl: dict, m: dict) -> None:
 
 
 def cmd_status(root, pl, files, m, args) -> int:
-    registered = {it.get("raw_file") for it in m["items"].values()}
-    stale = [slug for slug, it in m["items"].items()
+    registered = {it.get("raw_file") for it in m["articles"].values()}
+    stale = [slug for slug, it in m["articles"].items()
              if it.get("raw_file") and not (root / it["raw_file"]).exists()]
     bad = [f for f in files if not f["qualified"]]
     result = {"ok": not bad and not stale, "pipeline": pl["name"],
@@ -166,7 +169,7 @@ def cmd_status(root, pl, files, m, args) -> int:
 
 
 def cmd_register(root, pl, files, m, args) -> int:
-    items = m["items"]
+    items = m["articles"]
     added = updated = 0
     skipped = [f for f in files if not f["qualified"]]
     for f in files:

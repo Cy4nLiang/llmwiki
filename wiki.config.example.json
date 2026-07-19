@@ -1,6 +1,6 @@
 {
   "$schema": "schema/wiki.config.schema.json",
-  "framework_version": "0.1.0",
+  "framework_version": "0.3.0",
   "domain": {
     "name": "myproj-knowledge",
     "description": "myproj 代码库的项目内生说明书:架构决策(ADR)、踩坑记录、团队约定、操作 how-to 与外部依赖文档快照——让 agent 在本仓工作时先查库再动手,踩过的坑不踩第二次。",
@@ -30,8 +30,9 @@
       "kind": "rolling",
       "raw_dir": "raw/conventions",
       "prefix": "conv-",
+      "adapter": "manual",
       "source_kinds": ["convention"],
-      "x-note": "滚动源:整份团队约定/编码规范文档整体覆盖快照(faithful 与 dated 派生分离,变化记「演进」,W-ING-3);adapter 从 adapters/rolling_source.skeleton.py 自行实现,或人工把快照放入 raw/conventions/(判新走 rolling_digest,见 docs/rolling-source.md)"
+      "x-note": "滚动源:整份团队约定/编码规范文档整体覆盖快照(faithful 与 dated 派生分离,变化记「演进」,W-ING-3);adapter=manual 哨兵 = 人工把快照放入 raw/conventions/(判新走 rolling_digest,见 docs/rolling-source.md);要自动抓取时改为脚本路径(从 adapters/rolling_source.skeleton.py 复制实现)"
     }
   ],
   "budgets": {

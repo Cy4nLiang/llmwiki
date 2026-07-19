@@ -10,8 +10,22 @@
      exact-verbatim|unanswerable|route", "question": "...",
      "golden": {"<wiki 相对 slug>": 2|1, ...}, "answer_keys": ["...", ...]}
   分级语义:2 = 必读页(应被打开),1 = 有帮助页(打开算加分,权重为 2 级页的一半)。
-  golden 为空 {} = unanswerable 诚实探针:不评检索,只回传 answer 供人工核对(W-QRY-3)。
-  注:题型 6+1+路由题的 schema 机检收敛属 M3;本工具对 type 字段只透传不校验。
+  规范文档 = evals/golden.schema.json(M3):载入时按其手写校验——结构错误(缺必填/类型不符/
+  golden 值非 1|2/unanswerable 带非空 golden/qid 重复)→ exit 2;未知 type 经别名映射
+  (exact-version→exact-verbatim、how-do-I→single-hop、route-entry→route)后仍未知 → warning
+  不阻断,按普通检索题打分。--check-golden <path> 只校验不打分(exit 0 干净 / 1 有 warning /
+  2 结构错误)。
+
+■ unanswerable 诚实探针(golden 空 {},W-QRY-3):
+  判定改 answer_keys 锚点匹配——golden 的 answer_keys 收敛为「未收录声明」锚点关键词
+  (如 "未收录";schema 约定 ≤20 字符),answer 含任一锚点(大小写不敏感子串)即判诚实;
+  超长整句不算可用锚点(存量句式写法,--check-golden 会 warning)。无可用锚点时回退 M2
+  遗留粗启发式(answer 含「未收录」或 "not",与 eval_compare 同款)并在结果中标注
+  honest_method="heuristic"。判不诚实计入 problem_q → exit 1。
+
+■ route 题型打分语义:与普通题完全相同(files_read 含 golden 页即命中),无特殊分支;
+  其特殊性只在出题面——golden 指向 _map 决策表入口应路由到的页 / 应被 description 选中的页,
+  回归 W-PAGE-2 description 触发质量。逐型出题要点见 evals/question-types.md。
 
 ■ run 文件(每行一题;与参考实例 newpj4 的 run 文件格式兼容):
     {"qid": "...", "files_read": ["concepts/mcp", "raw/xx/yy.md", ...], "answer": "..."}
@@ -28,16 +42,19 @@
 
 用法:
     python3 tools/eval_retrieval.py <run.jsonl> [--root DIR] [--golden PATH] [--json]
+    python3 tools/eval_retrieval.py --check-golden evals/golden.jsonl [--json]  # 只校验不打分
     python3 tools/eval_retrieval.py --export-qrels [--qrels-out PATH]   # BEIR 兼容导出
-  相对路径(run / --golden / --qrels-out)一律按 --root 解析;--root 默认 cwd。
+  相对路径(run / --golden / --check-golden / --qrels-out)一律按 --root 解析;--root 默认 cwd。
 
-退出码:0 = 打分完成且无漏必读、无缺题;1 = 存在漏必读 / run 缺题 / 数据行解析失败;
-        2 = 用法或配置错误(路径不存在、参数缺失等)。
+退出码:0 = 打分完成且无漏必读、无缺题、诚实探针全过(--check-golden:校验干净);
+        1 = 存在漏必读 / run 缺题 / 诚实探针未过 / 数据行解析失败(--check-golden:仅 warning);
+        2 = 用法或配置错误(路径不存在、参数缺失、golden 结构错误)。
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -70,8 +87,97 @@ def load_jsonl(path: Path) -> tuple[list[dict], list[str]]:
     return rows, errors
 
 
+# ------------------------------------------------------- golden schema 校验(M3)
+# 规范文档 = evals/golden.schema.json;此处为其手写实现(仅标准库,不引 JSON Schema 引擎)。
+# 执行口径与 schema 头注一致:结构错误 → exit 2;未知 type(经别名映射后)/ 未知字段 → warning。
+
+CANONICAL_TYPES = ("single-hop", "multi-hop", "comparison", "aggregation",
+                   "timeline", "exact-verbatim", "unanswerable", "route")
+# 别名映射(schema x-alias-map 同源):exact-version = 参考实例 newpj4 存量;
+# how-do-I = hello-wiki 夹具存量(queries 缓存单跳);route-entry = route 早期草案名。
+TYPE_ALIASES = {"exact-version": "exact-verbatim", "how-do-I": "single-hop",
+                "how-do-i": "single-hop", "route-entry": "route"}
+KNOWN_FIELDS = {"qid", "type", "question", "golden", "answer_keys", "notes"}
+UNANSWERABLE_KEY_MAXLEN = 20  # 诚实探针锚点长度上限(schema 同值);超长疑似整句,锚点匹配必失
+
+
+def canon_type(t) -> str:
+    """type 归一:别名映射到规范题型;未知原样返回(调用方判 warning)。"""
+    return TYPE_ALIASES.get(t, t) if isinstance(t, str) else ""
+
+
+def validate_golden(rows: list[dict]) -> tuple[list[str], list[str]]:
+    """按 evals/golden.schema.json 手写校验。返回 (errors, warnings);errors 非空 → exit 2。"""
+    errors: list[str] = []
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for i, row in enumerate(rows, 1):
+        tag = "golden 第 %d 条" % i
+        if not isinstance(row, dict):
+            errors.append("%s: 不是 JSON 对象" % tag)
+            continue
+        qid = row.get("qid")
+        if not isinstance(qid, str) or not qid.strip():
+            errors.append("%s: qid 缺失或非非空字符串" % tag)
+        else:
+            tag = "golden[%s]" % qid
+            if qid in seen:
+                errors.append("%s: qid 重复" % tag)
+            seen.add(qid)
+            if not re.match(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$", qid):
+                warnings.append("%s: qid 不符 ASCII slug 约定(schema pattern)" % tag)
+        if not isinstance(row.get("question"), str) or not row.get("question", "").strip():
+            errors.append("%s: question 缺失或非非空字符串" % tag)
+        t = row.get("type")
+        if not isinstance(t, str) or not t.strip():
+            errors.append("%s: type 缺失或非字符串" % tag)
+            ct = ""
+        else:
+            ct = canon_type(t)
+            if ct not in CANONICAL_TYPES:
+                warnings.append("%s: 未知 type %r(经别名映射后仍未知;按普通检索题打分)" % (tag, t))
+        gold = row.get("golden")
+        if not isinstance(gold, dict):
+            errors.append("%s: golden 缺失或非对象" % tag)
+            gold = {}
+        else:
+            for k, v in gold.items():
+                if not isinstance(k, str) or not k.strip():
+                    errors.append("%s: golden 含非法键 %r" % (tag, k))
+                if v not in (1, 2):
+                    errors.append("%s: golden[%r] = %r(枚举 2=必读 / 1=有帮助)" % (tag, k, v))
+        keys = row.get("answer_keys")
+        if keys is None:
+            errors.append("%s: answer_keys 缺失(必填;可为空数组)" % tag)
+            keys = []
+        elif not isinstance(keys, list) or any(not isinstance(k, str) or not k for k in keys):
+            errors.append("%s: answer_keys 须为非空字符串数组" % tag)
+            keys = []
+        for f in row:
+            if f not in KNOWN_FIELDS and not str(f).startswith("x-"):
+                warnings.append("%s: 未知字段 %r(schema 外;忽略)" % (tag, f))
+        # 跨字段一致性(schema allOf if/then)
+        if ct == "unanswerable":
+            if gold:
+                errors.append("%s: unanswerable 题 golden 必须为空对象 {}" % tag)
+            if not keys:
+                warnings.append("%s: unanswerable 题 answer_keys 为空 → 诚实判定回退 M2 启发式" % tag)
+            for k in keys:
+                if len(k) > UNANSWERABLE_KEY_MAXLEN:
+                    warnings.append("%s: unanswerable 锚点 %r 超 %d 字符,疑似整句非锚点关键词,"
+                                    "匹配可能误判(schema 约定收敛为「未收录声明」短锚点)"
+                                    % (tag, k[:30], UNANSWERABLE_KEY_MAXLEN))
+        else:
+            if not gold:
+                warnings.append("%s: golden 为空但 type 非 unanswerable → 将按诚实探针处理" % tag)
+            elif 2 not in gold.values():
+                warnings.append("%s: 无 2 级必读页(每题应至少一个必读页)" % tag)
+    return errors, warnings
+
+
 def score(golden_rows: list[dict], run_rows: list[dict]) -> tuple[list[dict], dict]:
-    """加权 P/R 打分(逻辑与参考实例 newpj4 逐字一致)。返回 (per_question, summary)。"""
+    """加权 P/R 打分(P/R 数学与参考实例 newpj4 逐字一致;M3 改动仅限 unanswerable 分支:
+    诚实判定自动化 = answer_keys 锚点匹配,空锚点回退旧启发式,不诚实计入 problems)。"""
     golden = {g["qid"]: g for g in golden_rows}
     runs = {r["qid"]: r for r in run_rows}
     per_q: list[dict] = []
@@ -86,9 +192,27 @@ def score(golden_rows: list[dict], run_rows: list[dict]) -> tuple[list[dict], di
             continue
         read = {norm(p) for p in r.get("files_read", [])}
         if not gold:
-            # unanswerable 诚实探针(W-QRY-3):不评检索,只提示人工核对 answer
+            # unanswerable 诚实探针(W-QRY-3):不评检索,自动判诚实。
+            # 首选 answer_keys 锚点匹配(「未收录声明」关键词,大小写不敏感子串);
+            # 可用锚点 = 长度 ≤ UNANSWERABLE_KEY_MAXLEN 的键——超长整句(参考实例 newpj4
+            # v0.1 存量写法,--check-golden 已 warning)不算锚点,以免制造假阴性;
+            # 无可用锚点时回退 M2 遗留粗启发式(与 eval_compare 同款)并标注 —— fallback,
+            # 新 golden 应按 schema 收敛锚点,消除启发式误判。
+            ans = r.get("answer", "")
+            keys = [k for k in g.get("answer_keys", [])
+                    if isinstance(k, str) and k.strip()
+                    and len(k) <= UNANSWERABLE_KEY_MAXLEN]
+            if keys:
+                honest = any(k.lower() in ans.lower() for k in keys)
+                method = "answer_keys"
+            else:
+                honest = ("未收录" in ans) or ("not" in ans.lower())
+                method = "heuristic"
+            if not honest:
+                problems += 1
             per_q.append({"qid": qid, "status": "unanswerable",
-                          "answer": r.get("answer", "")[:120]})
+                          "honest": honest, "honest_method": method,
+                          "answer": ans[:120]})
             continue
         must = {s for s, v in gold.items() if v == 2}
         helpful = {s for s, v in gold.items() if v == 1}
@@ -120,7 +244,10 @@ def print_human(per_q: list[dict], summary: dict) -> None:
         if q["status"] == "missing-run":
             print("%-34s   -     -   (run 缺失)" % qid)
         elif q["status"] == "unanswerable":
-            print("%-34s   n/a   n/a  [unanswerable] 人工核对诚实性:%s" % (qid, q["answer"][:60]))
+            mark = "✓" if q["honest"] else "✗(编造/未声明未收录)"
+            via = "锚点" if q["honest_method"] == "answer_keys" else "启发式 fallback"
+            print("%-34s   n/a   n/a  [unanswerable] 诚实=%s(%s)answer:%s"
+                  % (qid, mark, via, q["answer"][:50]))
         else:
             detail = ("漏必读:%s" % q["miss_must"]) if q["miss_must"] else "✓"
             if q["extra_read"]:
@@ -130,7 +257,7 @@ def print_human(per_q: list[dict], summary: dict) -> None:
         print("\n均值(不含 unanswerable): precision %.3f  recall %.3f  (n=%d)"
               % (summary["precision"], summary["recall"], summary["n"]))
     if summary["problem_q"]:
-        print("发现问题: %d 题存在漏必读或 run 缺失 → exit 1" % summary["problem_q"])
+        print("发现问题: %d 题存在漏必读 / run 缺失 / 诚实探针未过 → exit 1" % summary["problem_q"])
 
 
 def export_qrels(golden_rows: list[dict], out: Path) -> None:
@@ -158,6 +285,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--golden", default=None,
                     help="golden jsonl 路径(默认 <root>/evals/golden.jsonl)")
     ap.add_argument("--json", dest="as_json", action="store_true", help="机器可读 JSON 输出")
+    ap.add_argument("--check-golden", metavar="PATH", default=None,
+                    help="只按 evals/golden.schema.json 校验该 golden 文件,不打分"
+                         "(exit 0 干净 / 1 有 warning / 2 结构错误)")
     ap.add_argument("--export-qrels", action="store_true", help="导出 BEIR 兼容 qrels 后退出")
     ap.add_argument("--qrels-out", default=None,
                     help="qrels 输出路径(默认 <root>/state/qrels.tsv,守 W-ARCH-2 白名单)")
@@ -175,6 +305,28 @@ def main(argv: list[str] | None = None) -> int:
         print("提示: %s 下 wiki.config.json 不可用(%s);ID-based 打分不依赖 config,继续。"
               % (root, e), file=sys.stderr)
 
+    if args.check_golden:
+        # --check-golden:只校验不打分(规范 = evals/golden.schema.json)
+        gp = resolve(root, args.check_golden)
+        if not gp.is_file():
+            print("错误: golden 不存在:%s" % gp, file=sys.stderr)
+            return 2
+        rows, parse_errs = load_jsonl(gp)
+        errors, warnings = validate_golden(rows)
+        errors = parse_errs + errors  # 坏行 = 结构错误同级
+        if args.as_json:
+            print(json.dumps({"golden": str(gp), "n_questions": len(rows),
+                              "errors": errors, "warnings": warnings,
+                              "ok": not errors}, ensure_ascii=False, indent=2))
+        else:
+            for msg in errors:
+                print("错误: %s" % msg)
+            for msg in warnings:
+                print("警告: %s" % msg)
+            print("check-golden: %s — %d 题,%d 错误,%d 警告"
+                  % (gp, len(rows), len(errors), len(warnings)))
+        return 2 if errors else (1 if warnings else 0)
+
     golden_path = resolve(root, args.golden) if args.golden else root / "evals" / "golden.jsonl"
     if not golden_path.is_file():
         print("错误: golden 不存在:%s(用 --golden 指定)" % golden_path, file=sys.stderr)
@@ -182,6 +334,16 @@ def main(argv: list[str] | None = None) -> int:
     golden_rows, golden_errs = load_jsonl(golden_path)
     for msg in golden_errs:
         print("警告: %s" % msg, file=sys.stderr)
+    # schema 校验门(M3):结构错误 → exit 2;warning 打印 stderr 不阻断打分
+    schema_errs, schema_warns = validate_golden(golden_rows)
+    for msg in schema_warns:
+        print("警告: %s" % msg, file=sys.stderr)
+    if schema_errs:
+        for msg in schema_errs:
+            print("错误: %s" % msg, file=sys.stderr)
+        print("错误: golden 结构校验未过(%d 条;规范见 evals/golden.schema.json,"
+              "可先跑 --check-golden)" % len(schema_errs), file=sys.stderr)
+        return 2
 
     if args.export_qrels:
         out = resolve(root, args.qrels_out) if args.qrels_out else root / "state" / "qrels.tsv"

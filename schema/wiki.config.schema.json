@@ -216,7 +216,7 @@
         },
         "adapter": {
           "type": "string",
-          "description": "fetcher 适配器路径(实例自写,如 tools/adapters/vendor_docs.py;合规判据见 adapters/CONTRACT.md);push 型免;pull/rolling 型缺省时 sync 跳过该管线并提示(校验器 warning)"
+          "description": "fetcher 适配器路径(实例自写,如 tools/adapters/vendor_docs.py;合规判据见 adapters/CONTRACT.md),或哨兵字面量 \"manual\"(=人工投放快照/文件进 raw_dir:合法配置,sync 跳过抓取且不告警,报告标注 [manual];语义见 CONTRACT.md「manual 哨兵」);push 型免;pull/rolling 型缺省时 sync 跳过该管线并提示(校验器 warning)"
         },
         "source_kinds": {
           "type": "array",

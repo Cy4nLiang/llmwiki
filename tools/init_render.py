@@ -219,7 +219,10 @@ def validate_config(cfg):
                 err("%s.prefix" % p, "须匹配 ^[a-z0-9-]*$,得到 %s" % _fmt(pf))
             ad = pl.get("adapter")
             if ad is not None and (not isinstance(ad, str) or not ad.strip()):
-                err("%s.adapter" % p, "须为非空字符串路径")
+                err("%s.adapter" % p, "须为非空字符串路径,或哨兵字面量 \"manual\"")
+            # adapter="manual" 哨兵:人工投放快照/文件进 raw_dir,合法且免适配器
+            # (sync 跳过抓取不告警,契约见 adapters/CONTRACT.md「manual 哨兵」);
+            # 仍未声明 adapter 字段的 pull/rolling 保留下方警告。
             if ad is None and kd in ("pull", "rolling"):
                 warn("%s.adapter" % p, "%s 型管线未声明适配器:sync 将跳过该管线(契约见 adapters/CONTRACT.md)" % kd)
             sk = pl.get("source_kinds")
@@ -395,7 +398,9 @@ def compute_slots(cfg, fw_version):
     for p in pipelines:
         kinds = "、".join(p["source_kinds"]) if p["source_kinds"] else "—"
         prefix = "`%s`" % p["prefix"] if p["prefix"] else "—"
-        if p.get("adapter"):
+        if p.get("adapter") == "manual":
+            adapter = "manual(人工投放,免适配器)"
+        elif p.get("adapter"):
             adapter = "`%s`" % p["adapter"]
         elif p["kind"] == "push":
             adapter = "—(直投,免适配器)"
@@ -504,7 +509,7 @@ def compute_slots(cfg, fw_version):
         "- `python3 tools/init_render.py --config wiki.config.json --target .`:补渲染/升级(已存在文件默认跳过)",
     ]
     for p in pipelines:
-        if p.get("adapter"):
+        if p.get("adapter") and p["adapter"] != "manual":   # manual 哨兵无脚本,不列命令
             cmds.append("- 管线 `%s` 适配器:`%s`(discover/fetch/status,契约见 %s)"
                         % (p["name"], p["adapter"], _contract))
     slots["tools.cmds"] = "\n".join(cmds)

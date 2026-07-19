@@ -1,6 +1,6 @@
 {
   "_comment": "派生物(W-IDX-1):python3 tools/gen_manifest.py 生成,勿手编;tier 语义见 Spec §1.3",
-  "framework_version": "0.2.0",
+  "framework_version": "0.3.0",
   "files": [
     {
       "path": ".claude/agents/wiki-reader.template.md",
@@ -20,7 +20,7 @@
     {
       "path": ".claude/skills/wiki-golden/SKILL.md",
       "tier": "render-once",
-      "sha256": "8520ff19e5df1b1d2ac6b1c294877e346523a77f13e415d97ef8f494c8c7d617"
+      "sha256": "e94329e6c41a7a3815c75d35e1c5bec285ba5c3ba7c44a16e9e9332a8d01a92f"
     },
     {
       "path": ".claude/skills/wiki-init/SKILL.md",
@@ -30,7 +30,7 @@
     {
       "path": ".claude/skills/wiki-upgrade/SKILL.md",
       "tier": "render-once",
-      "sha256": "3b9b4489f750d4fb8b7befcbab1606c4e000c27bb1286c0d376ac2f0ae6a3c8e"
+      "sha256": "4c23a5271869a7a0bfd47e565e9e9a0c1bff5501c9548409f93b102e151e067b"
     },
     {
       "path": ".gitignore",
@@ -50,12 +50,12 @@
     {
       "path": "README.md",
       "tier": "meta",
-      "sha256": "45f850f7109622c4600950e9bcf2b6b1dc2ba486d13dce5b892cbdf26ff2972c"
+      "sha256": "713abd80b4d9ba7ddc78dc8cbff29565e7cd50c30ced1dde5d97d0799b405c6c"
     },
     {
       "path": "adapters/CONTRACT.md",
       "tier": "frozen",
-      "sha256": "09dc2b3a1551151b2ecd730d78812c333f8a5229bc99156e85677c8910f6a802"
+      "sha256": "9fed06acf6269fc366bbd6604707dd0f2f4b52e0e39ed88ae24c60c5f65dc4bc"
     },
     {
       "path": "adapters/article_fetcher.skeleton.py",
@@ -65,7 +65,7 @@
     {
       "path": "adapters/local_notes.py",
       "tier": "frozen",
-      "sha256": "0ffdf2f6314ce92cb321ed61485db26d76de7f1b2e9367acf127d6ee67596d2c"
+      "sha256": "33ac4ccb07c37ce66109a5d5a8530cc7b1204f55263d350d58a4391193d438f0"
     },
     {
       "path": "adapters/rolling_source.skeleton.py",
@@ -88,24 +88,54 @@
       "sha256": "320e405709ec6d267f2bc00bcd440b8e51ee886630b06394c93d1106a6b0d7e8"
     },
     {
+      "path": "evals/golden.schema.json",
+      "tier": "frozen",
+      "sha256": "ab24086c4461bc2e21e92069c47e648924f7ce7fbb91c6b8760c8b2987dbb903"
+    },
+    {
+      "path": "evals/playbook.md",
+      "tier": "frozen",
+      "sha256": "68373028a64c3bf8a1b864b952ea8450adea81c7cc22b6f9fa0c19b03e5cdc87"
+    },
+    {
+      "path": "evals/question-types.md",
+      "tier": "frozen",
+      "sha256": "b9862e1a5960c0294c611580f24e6207204a1924c7d31899c2fe84b5e30c9b02"
+    },
+    {
+      "path": "extras/README.md",
+      "tier": "frozen",
+      "sha256": "5f5374f6c75af560febfd13cd3a815afbedc8975966167e4152fb1efc0f7bbca"
+    },
+    {
+      "path": "extras/i18n_link.py",
+      "tier": "frozen",
+      "sha256": "2cbbf537693c648c11a19624abfec27f622d1f0387bb31ba749f068417dec50e"
+    },
+    {
+      "path": "extras/serve.py",
+      "tier": "frozen",
+      "sha256": "d04ffe60117f2679c91890523750d12ee708a93c05ffcc5ccfdb0efffa70aa1e"
+    },
+    {
       "path": "framework/RULES.md",
       "tier": "meta",
-      "sha256": "91789b8af59bbde828acfe74cb5d1b60c86665fd4d53c8d2a0c2c5bbf99c26d9"
+      "sha256": "efbea2257e5f84c128bdbfc727419564269638fab53c0d3153eb2f6bfa7f3370"
     },
     {
       "path": "framework/UPGRADING.md",
       "tier": "meta",
-      "sha256": "f5f0ef77822dc36324dce39a6f9e7efb535f3af79aa11e4d95b75bfdaf8ae19c"
+      "sha256": "04703c56c35f6dc41d4e9eedd7d66ea8b92d6fcecc2105a6b2c34c2e7378bb08"
     },
     {
       "path": "framework/VERSION",
       "tier": "meta",
-      "sha256": "1f930dd1f133c1f97a94fe3acb8db34372cf4c01ffdb2b3ff4ca72f9494121e9"
+      "sha256": "d915cc95d6ca8f47ae297713ed46d4e5c5d99ddd29fc3c61e263bdf305f2b5b0"
     },
     {
       "path": "schema/wiki.config.schema.json",
       "tier": "frozen",
-      "sha256": "22a4f867f20ea6e60dbdbca3d48b9dfed573e55ea7a4d5fcb3fbb0838d4e2e41"
+      "sha256": "46eae533aaaffe12d42922f29c4fb67d713305b3d43e9cc9665b15ba9beacfad"
     },
     {
       "path": "templates/skills/wiki-ingest/SKILL.md",
@@ -170,7 +200,7 @@
     {
       "path": "tools/eval_retrieval.py",
       "tier": "frozen",
-      "sha256": "69654feb6da8db07ec0001e223107fcc8de0c02e3cc226e13c37fb6fed25f9bd"
+      "sha256": "fa9e49d7b15fb1d4a037a67ee7cb1438ada073c20c1b5bc3aec3781e72a4d008"
     },
     {
       "path": "tools/gen_manifest.py",
@@ -180,7 +210,7 @@
     {
       "path": "tools/init_render.py",
       "tier": "frozen",
-      "sha256": "1b841a237d53b6bb28a2278e4ea2da3c328bbac6bb9cfba375264dbbca815c5a"
+      "sha256": "6d45f1645da8d5e2969531c9194608ba796808367e3ba586a487f80cc6e48ae4"
     },
     {
       "path": "tools/lib/__init__.py",
@@ -200,13 +230,18 @@
     {
       "path": "tools/sync.py",
       "tier": "frozen",
-      "sha256": "4088dec13b0e21fe7ea112e8e9d2af4bcf34a4e7b9764c14a6ac3ae14bc235a5"
+      "sha256": "99342b3ff07a7a2a8d6db355cec24aecd0fce3fbf1c3cce01128781b86f5726e"
+    },
+    {
+      "path": "tools/upgrade.py",
+      "tier": "frozen",
+      "sha256": "dd81541f831b45f9d9fd6557a101c9a0ae7ff0b8e7e3a963e62cc4da3a1fe17d"
     },
     {
       "path": "wiki.config.example.json",
       "tier": "meta",
-      "sha256": "ab4585ab2f1c471e02418cdddf5001453dc0554d4f10c16ead77b14f1a7af9cb"
+      "sha256": "017b93203c00bddd40fa19a1511746ab7d259381c3fdc410d54e35eb6df38b61"
     }
   ],
-  "generated": "2026-07-19"
+  "generated": "2026-07-20"
 }

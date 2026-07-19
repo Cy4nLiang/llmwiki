@@ -29,6 +29,23 @@ ingest 工作(W-ARCH-2 两类写入者分权)。
 
 三型可在同一实例并存;一个适配器只服务一条管线(一对一,name 对齐)。
 
+### 1.1 `adapter: "manual"` 哨兵(免适配器管线)
+
+`pipelines[].adapter` 允许字面量 **`"manual"`**:声明该管线的内容由**人工投放**
+快照/文件进 raw_dir(pull / rolling 均可;rolling 最常见——人工把整份滚动文档
+快照放进 `raw/<dir>/`)。语义:
+
+- **合法配置,不是缺配置**:config 校验不告警;sync 跳过抓取阶段但**不打**
+  「未声明适配器」警告,报告中该管线标注 `[manual]`;
+- **只免抓取,不免其他义务**:pending 判定照常(§1 表;rolling 仍走 §6 digest)、
+  raw 文件形态照常(§5;rolling faithful 豁免同旧)、写入边界照常(§3——人工投放
+  也只许动自己管线的 raw_dir);manifest 台账可无(pending 本就不依赖台账);
+- **零迁移升级**:日后接入真适配器时,把 `"manual"` 替换为脚本路径即可,
+  其余约定不变。反向亦然(适配器退役 → 改回 `"manual"`)。
+
+与「不写 adapter 字段」的区别:缺字段 = 待接入状态(pull/rolling 触发校验器
+warning + sync 跳过提示);`"manual"` = 明确的人工管线,不再产生噪音。
+
 ## 2. CLI 子命令合同
 
 每个 pull / rolling 适配器必须是可直接执行的脚本,提供子命令:
@@ -66,13 +83,15 @@ discover/fetch 重建 —— pending 判定不依赖台账,正因如此。
 
 ## 4. manifest 台账
 
-路径:`state/<pipeline>.manifest.json`。结构:
+路径:`state/<pipeline>.manifest.json`。**容器推荐形状(v1 冻结):
+`{"articles": {slug: {...}}}`** —— 条目一律挂在顶层 `articles` 键下、以 slug 为键。
+结构:
 
 ```jsonc
 {
   "pipeline": "docs",              // 与 config pipelines[].name 一致
   "updated": "2026-07-19",         // 最近一次写台账的日期
-  "items": {                       // slug → 条目
+  "articles": {                    // 推荐容器键(v1 冻结):slug → 条目
     "2026-07-01-some-post": {
       "slug": "2026-07-01-some-post",       // 必填:条目 slug(ASCII;与 raw 文件 stem 一致)
       "url": "https://example.com/p/…",     // 必填:来源 URL;push 型可空字符串 ""
@@ -87,6 +106,10 @@ discover/fetch 重建 —— pending 判定不依赖台账,正因如此。
 
 - **必填字段:`slug` / `url`(push 可空)/ `title` / `date` / `fetched` / `raw_file`**;
   可选字段自由追加(`chars`、`authors`、`sha256`、`non_article` 等);
+- **容器兼容性**:build_site 兼容读取历史形态——顶层 `{"articles": dict|list}`、
+  顶层 dict(slug → 条目)、顶层 list 均可解析;但**新适配器一律采用推荐形状**
+  `{"articles": {slug: {...}}}`。注意:`articles` 以外的容器键名(如 `items`)
+  **不会**被识别为容器,其下条目会被误读——勿用;
 - 写入用「写 `state/tmp/` 临时文件 → 原子替换」,抓一条存一次(中断可续);
 - rolling 型台账通常只有一条 item(该滚动文档本身),`sha256` 建议随抓更新。
 
@@ -190,6 +213,7 @@ sync 依此裁决:adapter 返回非 0 → 该管线标记失败,sync 整体 exit
 - [ ] `--root` 必收且一切路径以之解析;任意 cwd 下运行结果相同
 - [ ] 只写自己的 `raw/<dir>/` + `state/<pipeline>.manifest.json`;临时件全部在 `state/tmp/`
 - [ ] 从不修改 raw 既有文件(rolling faithful 同名整体覆盖除外)
+- [ ] manifest 容器采用推荐形状 `{"articles": {slug: {...}}}`(§4,v1 冻结)
 - [ ] manifest 六必填字段齐:slug / url(push 可空)/ title / date / fetched / raw_file
 - [ ] raw 内容文件 = YAML frontmatter + 正文;文件名 stem 与源页命名 `<prefix><stem>.md` 对齐
 - [ ] 多条抓取路径(如有)产物同构,manifest 条目同构

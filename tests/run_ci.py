@@ -20,7 +20,24 @@
       exit 0 且 summary 等于预期常数 {n:3, precision:0.8333, recall:0.8889};
   (f) config.multifacet.json 变体(peers[0].path 由 CI 现场替换为 base 实例路径)
       重复 (a)-(c),并断言 index-sources-{infra,app}.md 生成、
-      peer 互引 lint 为 soft warning(W-XRF-1)不 fail。
+      peer 互引 lint 为 soft warning(W-XRF-1)不 fail;
+  (g) eval_retrieval --check-golden:夹具 golden 零 error 零 warning(exit 0);
+      现场造坏 golden(未知 type=warning + golden 非对象=结构错误)断言 exit 2;
+  (h) 模拟升级一轮(M3 核心;Spec §10):tmp 内复制框架仓为 fw-next,改一个 frozen
+      工具(加注释行)+ 一个 render-once 模板(followups 加一行)+ bump 0.3.1 +
+      UPGRADING.md 顶插条目 + 重跑 gen_manifest;对 base 实例:
+      (h1) --dry-run 全树逐文件比对零写入,计划列出上述文件;
+      (h2) 实跑:frozen 干净覆盖、未被实例改过的 render-once 自动采用新版、
+           VERSION==0.3.1、framework/base/ 与 MANIFEST 快照刷新、lint 门禁 rc=0、
+           wiki/log.md 新增 upgrade 条目(W-LOG-1);
+      (h3) 冲突路(克隆实例):手改 render-once 再升级 → 原文件保留 +
+           <file>.upgrade-new 生成 + exit 1;
+      (h4) fork 路(克隆实例):手改 frozen 工具再升级 → 列 fork 候选未覆盖 + exit 1;
+  (i) extras 冒烟:serve.py 子进程起随机高位口 → GET /api/status 合法 JSON 且含
+      pipelines 段 → 关停;i18n_link.py 未配置语言对 exit 2;
+  (j) manual 哨兵:base sync status 不再出「未声明适配器」警告(guide adapter=manual),
+      peers 段与 framework_version 进 status --json;mf 实例 peers[0](hub→base)
+      可达、pages.jsonl 非空、报版本 skew(base 已升 0.3.1)。
 
 退出码:0 = 全部断言通过;1 = 任一断言失败(fail-fast,失败后保留 tmp 便于排查);
         2 = 用法/环境错误(夹具或框架文件缺失)。
@@ -29,20 +46,28 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 PY = sys.executable
 HERE = Path(__file__).resolve().parent          # llmwiki/tests
 FW = HERE.parent                                # llmwiki 框架根
 FX = HERE / "hello-wiki"                        # 夹具根
-DATE = "2026-07-19"                             # 固定渲染日期(确定性)
+# 固定渲染日期(确定性)。与 overlay log.md 的 bootstrap 条目日期对齐:升级三方合并的
+# base 侧按 bootstrap 日期重渲染,「现文件 == base_rendered」判定要求逐字节一致(§h2)。
+DATE = "2026-07-16"
 ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 
 # 手写 run 的确定分数(推导:q1 P=1 R=1;q2 P=1/2 R=1/1.5;q3 P=1 R=1;q4 不计分)
@@ -53,6 +78,34 @@ PENDING_SRC = "wiki/sources/2026-07-15-pitfall-timezone-greeting.md"
 # lint 中必须为 0 的 error 级检查项(soft/warning 项不在此列)
 ZERO_ERROR_CHECKS = ("broken_links", "fm_required", "fm_drift", "map_budget",
                      "stale_index", "log_format")
+
+# ---- (h) 模拟升级一轮的常数 --------------------------------------------------
+CUR_V = (FW / "framework" / "VERSION").read_text().strip()   # 框架当前版本(升级起点)
+NEXT_V = "0.3.1"                                # fw-next bump 到的版本
+UPG_DATE = "2026-07-19"                         # 升级簿记日期(log 条目/UPGRADING 落款)
+FROZEN_TOUCH = "tools/build_index.py"           # ① fw-next 改动的 frozen 工具
+FROZEN_MARK = "# fw-next: upgrade smoke marker(hello-wiki CI 注入,0.3.1)"
+TPL_TOUCH = "templates/wiki/followups.md"       # ② fw-next 改动的 render-once 模板
+TPL_MARK = "- 升级冒烟标记:0.3.1 模板新增行(hello-wiki CI 注入;纯文本非 wikilink)。"
+INST_MARK = "<!-- 实例手改:本地补充条目(hello-wiki CI 注入,h3 冲突路) -->"
+FORK_MARK = "# 实例本地改动:fork 候选(hello-wiki CI 注入,h4 fork 路)"
+UPGRADING_ENTRY = """## %s — %s(判级:PATCH)
+
+### 变更摘要
+- CI 升级冒烟造版:frozen 工具 %s 追加注释行;%s 追加一行。
+
+### 迁移清单(逐条引规则 ID)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| — | 文案 | 无动作(MANIFEST 校验干净 → frozen 自动覆盖;实例未改 → 模板自动采用) | frozen / render-once |
+
+### frozen 覆盖清单
+- %s —— 注释行追加;hash 校验干净则整体覆盖(W-UPG-1)
+
+### 验收
+- lint 全绿(W-UPG-2:实例 golden 属实例数据,升级不触碰)。
+
+""" % (NEXT_V, UPG_DATE, FROZEN_TOUCH, TPL_TOUCH, FROZEN_TOUCH)
 
 
 class CheckFail(Exception):
@@ -133,6 +186,18 @@ def derived_paths(inst: Path) -> list[Path]:
 
 def snapshot(paths: list[Path]) -> dict:
     return {str(p): (p.read_bytes() if p.is_file() else None) for p in paths}
+
+
+def tree_state(root: Path) -> dict:
+    """全树逐文件状态(相对路径 → sha256 / symlink 目标),用于 --dry-run 零写入断言。"""
+    st = {}
+    for p in sorted(root.rglob("*")):
+        rel = p.relative_to(root).as_posix()
+        if p.is_symlink():
+            st[rel] = ("link", os.readlink(str(p)))
+        elif p.is_file():
+            st[rel] = ("file", hashlib.sha256(p.read_bytes()).hexdigest())
+    return st
 
 
 # ---------------------------------------------------------------- 阶段
@@ -362,6 +427,252 @@ def phase_multifacet(ci: CI, tmp: Path, base: Path) -> None:
     assert_contradictions(ci, mf, label)
 
 
+def phase_golden_check(ci: CI, base: Path, tmp: Path) -> None:
+    print("\n[base/g] eval_retrieval --check-golden:夹具干净 / 坏 golden exit 2")
+    ev = base / "tools" / "eval_retrieval.py"
+    chk = ci.run_json("check-golden 夹具 --json",
+                      [PY, ev, "--check-golden", "evals/golden.jsonl",
+                       "--root", base, "--json"])
+    ci.check("check-golden 夹具:ok 且零 error 零 warning",
+             chk.get("ok") is True and chk.get("errors") == []
+             and chk.get("warnings") == [] and chk.get("n_questions") == 4,
+             json.dumps(chk, ensure_ascii=False)[:500])
+
+    bad = tmp / "bad-golden.jsonl"
+    bad.write_text(
+        '{"qid": "bad1", "type": "mystery-type", "question": "未知题型?", '
+        '"golden": {"concepts/greeting-protocol": 2}, "answer_keys": ["x"]}\n'
+        '{"qid": "bad2", "type": "single-hop", "question": "golden 非对象?", '
+        '"golden": ["not", "an", "object"], "answer_keys": ["y"]}\n',
+        encoding="utf-8")
+    rc, out, err = ci.run([PY, ev, "--check-golden", bad, "--root", base, "--json"])
+    ci.check("坏 golden(未知 type + golden 非对象)→ exit 2", rc == 2,
+             "rc=%s\nstdout(tail): %s\nstderr(tail): %s" % (rc, out[-400:], err[-400:]))
+    try:
+        rep = json.loads(out)
+    except json.JSONDecodeError:
+        rep = {}
+    ci.check("坏 golden 报告:恰 1 结构错误(golden 非对象)+ 未知 type 警告",
+             rep.get("ok") is False and len(rep.get("errors", [])) == 1
+             and "非对象" in rep["errors"][0]
+             and any("未知 type" in w for w in rep.get("warnings", [])),
+             json.dumps(rep, ensure_ascii=False)[:500])
+
+
+def build_fw_next(ci: CI, tmp: Path) -> Path:
+    """(h0) tmp 内复制框架仓为 fw-next 并造 0.3.1 版:frozen 工具加注释行、
+    followups 模板加一行、VERSION bump、UPGRADING.md 顶插条目、重跑 gen_manifest。"""
+    print("\n[h0] fw-next 造版:frozen+模板各一处改动 → %s + UPGRADING + gen_manifest" % NEXT_V)
+    fwn = tmp / "fw-next"
+    shutil.copytree(str(FW), str(fwn), symlinks=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"))
+
+    ft = fwn / FROZEN_TOUCH                    # ① frozen 工具:文末追加注释行
+    ft.write_text(ft.read_text(encoding="utf-8") + FROZEN_MARK + "\n", encoding="utf-8")
+
+    tt = fwn / TPL_TOUCH                       # ② render-once 模板:文末追加一行
+    ttxt = tt.read_text(encoding="utf-8")
+    tt.write_text(ttxt + ("" if ttxt.endswith("\n") else "\n") + TPL_MARK + "\n",
+                  encoding="utf-8")
+
+    (fwn / "framework" / "VERSION").write_text(NEXT_V + "\n", encoding="utf-8")
+    upg = fwn / "framework" / "UPGRADING.md"   # ③ 条目区顶部插入 0.3.1 条目(新→旧)
+    utxt = upg.read_text(encoding="utf-8")
+    m = re.search(r"(?m)^## \d+\.\d+\.\d+", utxt)
+    ci.check("fw-next UPGRADING.md 找到条目区插入点(首个版本条目)", m is not None,
+             utxt[:200])
+    upg.write_text(utxt[:m.start()] + UPGRADING_ENTRY + utxt[m.start():],
+                   encoding="utf-8")
+
+    ci.run_ok("fw-next gen_manifest 重导",
+              [PY, fwn / "tools" / "gen_manifest.py", "--root", fwn])
+    return fwn
+
+
+def phase_upgrade(ci: CI, tmp: Path, base: Path) -> Path:
+    fwn = build_fw_next(ci, tmp)
+    upgrade = base / "tools" / "upgrade.py"    # 实例自持有的升级器(frozen 拷贝)
+
+    # ---- (h1) --dry-run:零写入 + 计划列出改动 ----------------------------
+    print("\n[base/h1] upgrade --dry-run:全树零写入 + 计划列出改动文件")
+    before = tree_state(base)
+    rep = ci.run_json("upgrade --dry-run --json",
+                      [PY, upgrade, "--root", base, "--framework", fwn,
+                       "--dry-run", "--date", UPG_DATE, "--json"])
+    ci.check("dry-run 计划:%s → %s,差距条目 == [%s]" % (CUR_V, NEXT_V, NEXT_V),
+             rep.get("old") == CUR_V and rep.get("new") == NEXT_V
+             and rep.get("upgrading_entries") == [NEXT_V],
+             json.dumps({k: rep.get(k) for k in ("old", "new", "upgrading_entries")},
+                        ensure_ascii=False))
+    ci.check("dry-run 计划:frozen 覆盖列出 %s" % FROZEN_TOUCH,
+             FROZEN_TOUCH in rep.get("frozen", {}).get("overwrite", []),
+             json.dumps(rep.get("frozen"), ensure_ascii=False)[:500])
+    adopt = rep.get("render_once", {}).get("adopt", [])
+    ci.check("dry-run 计划:render-once 采用列出 wiki/followups.md 与 CLAUDE.md",
+             "wiki/followups.md" in adopt and "CLAUDE.md" in adopt,
+             json.dumps(rep.get("render_once"), ensure_ascii=False)[:500])
+    ci.check("dry-run 计划:零冲突零 fork",
+             rep.get("render_once", {}).get("conflict") == []
+             and rep.get("frozen", {}).get("fork") == [],
+             json.dumps(rep, ensure_ascii=False)[:500])
+    after = tree_state(base)
+    diff = sorted(set(before) ^ set(after)) + \
+        sorted(k for k in before if k in after and before[k] != after[k])
+    ci.check("dry-run 零写入(实例全树逐文件比对)", before == after,
+             "差异:%s" % diff[:20])
+
+    # 克隆两份升级前现场留给 h3/h4(必须在 h2 实跑改动 base 之前)
+    h3root, h4root = tmp / "base-h3", tmp / "base-h4"
+    for c in (h3root, h4root):
+        shutil.copytree(str(base), str(c), symlinks=True)
+
+    # ---- (h2) 实跑:frozen 覆盖 / 模板自动采用 / 收尾与门禁 ---------------
+    print("\n[base/h2] upgrade 实跑:frozen 覆盖 / render-once 自动采用 / 收尾 + 门禁")
+    rep = ci.run_json("upgrade apply --json",
+                      [PY, upgrade, "--root", base, "--framework", fwn,
+                       "--date", UPG_DATE, "--json"])
+    ci.check("升级完成:零冲突零 fork、lint 门禁 rc=0",
+             rep.get("rc") == 0 and rep.get("gate_rc") == 0
+             and rep.get("render_once", {}).get("conflict") == []
+             and rep.get("frozen", {}).get("fork") == [],
+             json.dumps({k: rep.get(k) for k in ("rc", "gate_rc")}, ensure_ascii=False))
+    ci.check("frozen 干净覆盖:实例 %s 出现 fw-next 注释行" % FROZEN_TOUCH,
+             FROZEN_MARK in (base / FROZEN_TOUCH).read_text(encoding="utf-8"))
+    ftxt = (base / "wiki" / "followups.md").read_text(encoding="utf-8")
+    ci.check("render-once 未被实例改过 → 自动采用新版(followups 出现新行)",
+             TPL_MARK in ftxt, ftxt[-300:])
+    ci.check("实例 framework/VERSION == %s" % NEXT_V,
+             (base / "framework" / "VERSION").read_text(encoding="utf-8").strip() == NEXT_V)
+    ci.check("framework/base/ 已刷新为新模板快照",
+             TPL_MARK in (base / "framework" / "base" / TPL_TOUCH).read_text(encoding="utf-8"))
+    snap = json.loads((base / "framework" / "MANIFEST.json").read_text(encoding="utf-8"))
+    ci.check("MANIFEST 快照随升级刷新(framework_version == %s)" % NEXT_V,
+             snap.get("framework_version") == NEXT_V,
+             json.dumps({k: snap.get(k) for k in ("framework_version",)}))
+    logtxt = (base / "wiki" / "log.md").read_text(encoding="utf-8")
+    ci.check("wiki/log.md 新增 upgrade 条目(W-LOG-1)",
+             ("## [%s] upgrade | framework %s -> %s" % (UPG_DATE, CUR_V, NEXT_V)) in logtxt,
+             logtxt[-400:])
+
+    # ---- (h3) 冲突路:实例手改 render-once 再升级 -------------------------
+    print("\n[h3] 冲突路:实例手改 render-once 后升级 → .upgrade-new + exit 1")
+    f3 = h3root / "wiki" / "followups.md"
+    f3.write_text(f3.read_text(encoding="utf-8") + INST_MARK + "\n", encoding="utf-8")
+    rep = ci.run_json("upgrade(冲突路)--json",
+                      [PY, h3root / "tools" / "upgrade.py", "--root", h3root,
+                       "--framework", fwn, "--date", UPG_DATE, "--json"], want_rc=1)
+    ci.check("冲突清单 == [wiki/followups.md]",
+             rep.get("render_once", {}).get("conflict") == ["wiki/followups.md"],
+             json.dumps(rep.get("render_once"), ensure_ascii=False)[:500])
+    t3 = f3.read_text(encoding="utf-8")
+    ci.check("原文件保留实例手改、未被新模板覆盖",
+             INST_MARK in t3 and TPL_MARK not in t3, t3[-300:])
+    up_new = h3root / "wiki" / ("followups.md" + ".upgrade-new")
+    ci.check("followups.md.upgrade-new 生成且为纯新模板渲染(含新行,无实例手改)",
+             up_new.is_file() and TPL_MARK in up_new.read_text(encoding="utf-8")
+             and INST_MARK not in up_new.read_text(encoding="utf-8"),
+             str(up_new))
+
+    # ---- (h4) fork 路:实例手改 frozen 工具再升级 -------------------------
+    print("\n[h4] fork 路:实例手改 frozen 工具后升级 → fork 候选未覆盖 + exit 1")
+    f4 = h4root / FROZEN_TOUCH
+    f4.write_text(f4.read_text(encoding="utf-8") + FORK_MARK + "\n", encoding="utf-8")
+    rep = ci.run_json("upgrade(fork 路)--json",
+                      [PY, h4root / "tools" / "upgrade.py", "--root", h4root,
+                       "--framework", fwn, "--date", UPG_DATE, "--json"], want_rc=1)
+    forks = [x.get("path") for x in rep.get("frozen", {}).get("fork", [])]
+    ci.check("fork 候选 == [%s](hash 与旧快照不符)" % FROZEN_TOUCH,
+             forks == [FROZEN_TOUCH],
+             json.dumps(rep.get("frozen"), ensure_ascii=False)[:500])
+    t4 = f4.read_text(encoding="utf-8")
+    ci.check("fork 候选未被覆盖(本地改动在、fw-next 注释行不在)",
+             FORK_MARK in t4 and FROZEN_MARK not in t4, t4[-300:])
+    return fwn
+
+
+def phase_extras(ci: CI, base: Path) -> None:
+    print("\n[base/i] extras 冒烟:serve /api/status;i18n_link 未配置 exit 2")
+    with socket.socket() as s:                  # 随机高位口:OS 分配后立即释放复用
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    proc = subprocess.Popen(
+        [str(PY), str(FW / "extras" / "serve.py"), "--root", str(base),
+         "--port", str(port), "--no-browser"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=ENV)
+    # loopback 直连:显式空 ProxyHandler,绕过环境 HTTP(S)_PROXY(否则 127.0.0.1
+    # 请求会被 urllib 送进代理,冒烟必然超时)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    body, last_err = None, None
+    try:
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                break                           # 服务提前退出(端口/配置问题)
+            try:
+                with opener.open(
+                        "http://127.0.0.1:%d/api/status" % port, timeout=3) as r:
+                    body = r.read().decode("utf-8")
+                break
+            except (urllib.error.URLError, OSError) as e:
+                last_err = e
+                time.sleep(0.25)
+        ci.check("serve.py 启动并响应 GET /api/status(port %d)" % port,
+                 body is not None,
+                 "proc rc=%s;last_err=%s" % (proc.poll(), last_err))
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError as e:
+            data = None
+            ci.check("/api/status 返回合法 JSON", False, "%s;body head: %r" % (e, body[:300]))
+        pipelines = (data.get("result") or {}).get("pipelines")
+        ci.check("/api/status 合法 JSON 且含 pipelines 段(notes+guide)",
+                 data.get("ok") is True and isinstance(pipelines, list)
+                 and {p.get("name") for p in pipelines} == {"notes", "guide"},
+                 body[:400])
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+    rc, out, err = ci.run([PY, FW / "extras" / "i18n_link.py", "--root", base])
+    ci.check("i18n_link 未配置语言对 → exit 2(报「未配置」)",
+             rc == 2 and "未配置" in (out + err),
+             "rc=%s\nstderr(tail): %s" % (rc, err[-300:]))
+
+
+def phase_manual_peers(ci: CI, base: Path, mf: Path) -> None:
+    print("\n[base+mf/j] manual 哨兵零警告;peers 段进 status --json")
+    rc, out, err = ci.run([PY, base / "tools" / "sync.py", "status", "--root", base, "--json"])
+    ci.check("base sync status --json → rc=0", rc == 0,
+             "rc=%s\nstderr(tail): %s" % (rc, err[-400:]))
+    ci.check("不再出「未声明适配器」警告(guide adapter=manual 哨兵)",
+             "未声明适配器" not in err and "未声明适配器" not in out, err[-400:])
+    st = json.loads(out)
+    ci.check("status --json 顶层含 peers 段与 framework_version(升级后 %s)" % NEXT_V,
+             isinstance(st.get("peers"), list) and st.get("framework_version") == NEXT_V,
+             json.dumps({k: st.get(k) for k in ("peers", "framework_version")},
+                        ensure_ascii=False)[:300])
+    guide = {p["name"]: p for p in st["pipelines"]}["guide"]
+    ci.check("guide 管线报 adapter == manual 且零 pending",
+             guide.get("adapter") == "manual" and guide.get("pending_count") == 0,
+             json.dumps(guide, ensure_ascii=False)[:300])
+
+    rc2, out2, err2 = ci.run([PY, mf / "tools" / "sync.py", "status", "--root", mf, "--json"])
+    ci.check("mf sync status --json → rc=0", rc2 == 0,
+             "rc=%s\nstderr(tail): %s" % (rc2, err2[-400:]))
+    pe = json.loads(out2).get("peers") or []
+    ci.check("mf peers[0](hub→base)可达、pages.jsonl 非空、报版本 skew(base 已 %s)" % NEXT_V,
+             len(pe) == 1 and pe[0].get("alias") == "hub"
+             and pe[0].get("reachable") is True and pe[0].get("pages_jsonl") is True
+             and (pe[0].get("pages_lines") or 0) > 0
+             and pe[0].get("framework_version") == NEXT_V
+             and pe[0].get("version_skew") is True,
+             json.dumps(pe, ensure_ascii=False)[:400])
+
+
 # ---------------------------------------------------------------- 主流程
 
 def main(argv=None) -> int:
@@ -376,7 +687,11 @@ def main(argv=None) -> int:
                  FW / "tools" / "init_render.py", FW / "tools" / "lint_wiki.py",
                  FW / "tools" / "build_site.py", FW / "tools" / "build_index.py",
                  FW / "tools" / "sync.py", FW / "tools" / "eval_retrieval.py",
-                 FW / "adapters" / "local_notes.py", FW / "tools" / "lib" / "fm.py"):
+                 FW / "adapters" / "local_notes.py", FW / "tools" / "lib" / "fm.py",
+                 FW / "tools" / "upgrade.py", FW / "tools" / "gen_manifest.py",
+                 FW / "extras" / "serve.py", FW / "extras" / "i18n_link.py",
+                 FW / "framework" / "VERSION", FW / "framework" / "MANIFEST.json",
+                 FW / "framework" / "UPGRADING.md"):
         if not need.exists():
             print("错误: 缺少夹具/框架文件:%s" % need, file=sys.stderr)
             return 2
@@ -395,6 +710,10 @@ def main(argv=None) -> int:
         phase_local_notes(ci, base)
         phase_eval(ci, base)                                   # (e)
         phase_multifacet(ci, tmp, base)                        # (f)
+        phase_golden_check(ci, base, tmp)                      # (g)
+        phase_upgrade(ci, tmp, base)                           # (h)
+        phase_extras(ci, base)                                 # (i)
+        phase_manual_peers(ci, base, tmp / "mf")               # (j)
     except CheckFail:
         pass                                                   # 已记账,fail-fast
     except Exception:                                          # noqa: BLE001 — 环境级故障也要给出现场

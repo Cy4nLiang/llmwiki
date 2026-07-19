@@ -1,0 +1,138 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "llmwiki/evals/golden.schema.json",
+ "title": "llmwiki golden 评测题(evals/golden.jsonl 每行一条)",
+ "description": "golden 回归集单题的规范 Schema(M3,2026-07-19)。容器为 JSONL:每行一个独立 JSON 对象,本 Schema 描述其中一行。分级语义:golden 值 2 = 必读页(缺了答案不完整,进 recall 分母),1 = 有帮助页(读到加分,权重为 2 级页一半)。unanswerable 诚实探针:golden 必须为空对象 {},answer_keys 收敛为『未收录声明』锚点关键词(如 \"未收录\"、\"not covered\",建议 ≤20 字符)——打分器以锚点子串匹配判诚实,消除 M2 遗留的粗启发式误判;answer_keys 为空时打分器回退旧启发式并标注。机检执行口径(tools/eval_retrieval.py 手写校验,非通用 JSON Schema 引擎):结构错误(缺必填/类型不符/golden 值非 1|2/unanswerable 带非空 golden)→ exit 2;未知 type 经 x-alias-map 映射后仍未知 → warning 不阻断;未知字段 → warning 不阻断。校验入口:python3 tools/eval_retrieval.py --check-golden evals/golden.jsonl --root <实例根>。",
+ "type": "object",
+ "required": [
+  "qid",
+  "type",
+  "question",
+  "golden",
+  "answer_keys"
+ ],
+ "additionalProperties": false,
+ "patternProperties": {
+  "^x-": {}
+ },
+ "properties": {
+  "qid": {
+   "type": "string",
+   "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+   "description": "题目唯一 ID(ASCII slug,全库唯一;重复 qid = 结构错误)。惯例:q<序号>-<短语义>,如 q01-managed-agents-price。"
+  },
+  "type": {
+   "description": "题型。规范枚举 8 类(canonicalType);别名(aliasType)仅为兼容存量数据,经 x-alias-map 归一后按规范题型处理,新题一律写规范名。",
+   "anyOf": [
+    {
+     "$ref": "#/$defs/canonicalType"
+    },
+    {
+     "$ref": "#/$defs/aliasType"
+    }
+   ]
+  },
+  "question": {
+   "type": "string",
+   "minLength": 1,
+   "description": "题面(交给被测 agent 的原文;不得泄露 golden 页名——route 题型尤其如此,题面只给需求不指名页面)。"
+  },
+  "golden": {
+   "type": "object",
+   "description": "命中集:键 = wiki 相对路径或 raw/ 路径(打分时 'wiki/' 前缀与 '.md' 后缀归一等价,raw/ 路径保留原样),值 = 2(必读)| 1(有帮助)。非 unanswerable 题至少一页,且应含至少一个 2 级页(机检为 warning);exact-verbatim 题必须含 raw 文件本身(W-QRY-1);unanswerable 题必须为空对象 {}。",
+   "propertyNames": {
+    "pattern": "^\\S+$"
+   },
+   "additionalProperties": {
+    "enum": [
+     1,
+     2
+    ]
+   }
+  },
+  "answer_keys": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "minLength": 1
+   },
+   "description": "答案判定锚点(字符串数组)。普通题:精确值或判定基准(版本号/日期/演进链),人工或 exact-match 判卷用。unanswerable 题:『未收录声明』锚点关键词(诚实答案中应出现的子串,大小写不敏感匹配),不要写整句期望答案——句子锚点几乎必然匹配失败(机检对 >20 字符的 unanswerable 锚点报 warning,且打分器不将超长键当作可用锚点);为空数组或无 ≤20 字符可用锚点时,打分器回退 M2 旧启发式并标注。"
+  },
+  "notes": {
+   "type": "string",
+   "description": "出题意图 / 校准备注(如 any-of 校准记录、『golden 校准过窄非 agent 失败』判定);不参与打分。"
+  }
+ },
+ "allOf": [
+  {
+   "if": {
+    "properties": {
+     "type": {
+      "const": "unanswerable"
+     }
+    },
+    "required": [
+     "type"
+    ]
+   },
+   "then": {
+    "properties": {
+     "golden": {
+      "maxProperties": 0
+     },
+     "answer_keys": {
+      "items": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 20
+      }
+     }
+    }
+   },
+   "else": {
+    "properties": {
+     "golden": {
+      "minProperties": 1
+     }
+    }
+   }
+  }
+ ],
+ "$defs": {
+  "canonicalType": {
+   "enum": [
+    "single-hop",
+    "multi-hop",
+    "comparison",
+    "aggregation",
+    "timeline",
+    "exact-verbatim",
+    "unanswerable",
+    "route"
+   ],
+   "description": "规范题型枚举(8 类):6 检索题型 + unanswerable 诚实探针 + route 路由入口选择题。逐型出题要点见 evals/question-types.md;route 打分语义与普通题相同(files_read 含 golden 页即命中),其特殊性只在出题面(golden = _map 决策表入口应路由到的页,回归 W-PAGE-2 description 触发质量)。"
+  },
+  "aliasType": {
+   "enum": [
+    "exact-version",
+    "how-do-I",
+    "how-do-i",
+    "route-entry"
+   ],
+   "description": "兼容别名(存量数据专用,新题禁用);映射关系见 x-alias-map。"
+  }
+ },
+ "x-alias-map": {
+  "exact-version": "exact-verbatim",
+  "how-do-I": "single-hop",
+  "how-do-i": "single-hop",
+  "route-entry": "route"
+ },
+ "x-alias-notes": {
+  "exact-version": "参考实例 newpj4 存量写法(v0.1 golden 16 题):精确版本条目题,即 exact-verbatim。",
+  "how-do-I": "hello-wiki CI 夹具存量写法:queries/ 缓存命中题,检索形态为单页直达,归一为 single-hop。",
+  "route-entry": "route 题型早期草案名。"
+ },
+ "x-provenance": "Schema 收敛依据:参考实例 newpj4 evals/golden.jsonl(16 题,2026-07-18 三方案横评实测)+ 框架 hello-wiki CI 夹具(tests/hello-wiki/evals/golden.jsonl);题型 6+1+route 见 Spec §11 评测协议。",
+ "$comment": "形式关键字(additionalProperties/minProperties/maxLength 等)从严存档;执行判定以 tools/eval_retrieval.py --check-golden 为准(部分严约束在执行层降级为 warning,见各字段 description)。"
+}

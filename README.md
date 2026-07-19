@@ -37,7 +37,7 @@ llmwiki 把「AI 维护的复利型知识库」协议层从参考实例(newpj4,6
 2. **实例化**:在 Claude Code 会话内触发 `/wiki-init`(skill 未触发时直接 Read `.claude/skills/wiki-init/SKILL.md`)。三模式:greenfield(全新)/ adopt(收编存量仓库,绝不覆盖已有文件)/ embedded(渲染进宿主子目录 `knowledge/`,宿主 CLAUDE.md 只追加指针段)。十问收集 domain 取值 → 写 `wiki.config.json` → `python3 tools/init_render.py` 确定性渲染 → `python3 tools/lint_wiki.py --check-slots` 冒烟(零槽位残留)。
 3. **首次 ingest**:把第一篇源材料放进 `raw/`(或按捕获协议投递 `raw/inbox/<date>-<slug>.md`),对 agent 说「ingest 这篇」——走 wiki-ingest 七步流,产出七段骨架源页并 touch 聚合页(W-ING-1:full ≥5 / light ≥1),这一步是复利闭环的起点,绝不退化成剪藏。
 
-> 当前为 M2 工具版:全套工具链与 fetcher 契约已落位;内生知识(inbox)开箱即用,外源管线从 `adapters/*.skeleton.py` 按契约自行实现。评测题型 schema 与升级工具见 M3。
+> 当前为 M3 质量版:工具链、fetcher 契约、评测打包(golden schema/题型/playbook)、升级工具(upgrade.py)与 extras(serve/i18n)已全部落位;剩余 M4 = 真实项目 dogfood + 发布工程。
 
 ## 目录导览
 
@@ -86,7 +86,7 @@ llmwiki/
 |---|---|---|
 | M1 骨架 | 契约挖空+锚点化+规则 ID、rules/meta/skills 模板、config schema、init_render + /wiki-init、lint --check-slots | **完成**(v0.1.0) |
 | M2 工具 | 7 件工具去 domain 化 + lib/fm.py、fetcher 契约、local_notes/inbox、hello-wiki 夹具 CI(79 断言) | **完成**(v0.2.0) |
-| M3 质量 | 评测打包(题型/playbook/路由入口题)、升级协议(MANIFEST hash 常跑/三方合并)、跨实例引用(W-XRF-1)、extras、安全默认 | 进行中 |
+| M3 质量 | 评测打包(题型/playbook/路由入口题)、升级协议(upgrade.py:hash 校验/三方合并/预备份/门禁)、跨实例引用收尾(peers 状态/版本 skew)、extras(serve/i18n)、安全默认 | **完成**(v0.3.0,CI 119 断言) |
 | M4 发布 | 真实代码项目 dogfood + 发布工程(公开仓库、贡献指南)→ v1.0.0 | 进行中 |
 
 ## 贡献与回流

@@ -15,11 +15,13 @@ wiki.config.json `pipelines[]`(pull / push / rolling 三型,契约见 adapters/C
     python3 tools/sync.py [sync] [--root DIR] [--only NAME] [--no-fetch] [--no-build] [--json]
         逐管线采集:pull/rolling 依 config `adapter` 字段跑
         `python3 <adapter> discover --root <root>` 与 `fetch --root <root>`
-        (缺 adapter 声明/文件 → 警告跳过);push 型免抓取。
+        (缺 adapter 声明/文件 → 警告跳过;adapter="manual" 哨兵 = 人工投放
+        快照/文件,跳过抓取且不告警,报告标注 [manual]);push 型免抓取。
         然后 build_site.py + build_index.py 重建派生物,跑 lint --manifest
         (W-UPG-1 常跑),最后打印分管线 pending 积压与分档建议。
 
     python3 tools/sync.py status  [--root DIR] [--json]     # 零网络:分管线库存/源页/pending
+                                                            # + peers 可达性(D6 跨实例,W-XRF-1)
     python3 tools/sync.py pending [--root DIR] [--json]     # 零网络:只打印待 ingest 清单
 
 pending 判定(持久重算,不依赖一次性台账;详细约定见 adapters/CONTRACT.md §6)
@@ -213,6 +215,66 @@ def all_pending(root: Path, cfg: dict, only: str | None = None) -> list[dict]:
     return [pipeline_pending(root, pl, tiers) for pl in pls]
 
 
+# ── peers 可达性(D6 跨实例;status 专用,零网络本机盘点)─────────────────
+
+def _read_fw_version(root: Path) -> str | None:
+    """读 <root>/framework/VERSION;不可读返回 None(不视为错误)。"""
+    try:
+        v = (root / "framework" / "VERSION").read_text(encoding="utf-8").strip()
+        return v or None
+    except OSError:
+        return None
+
+
+def peers_status(root: Path, cfg: dict) -> list[dict]:
+    """config peers[] 逐条盘点(W-XRF-1:不可达仅 soft warning,不改退出码):
+    alias / path 展开后是否可达 / 对方 site/agent/pages.jsonl 是否存在与行数 /
+    对方 framework/VERSION(可读则报,与本实例对照提示版本 skew)。"""
+    self_ver = _read_fw_version(root)
+    out: list[dict] = []
+    for pr in cfg.get("peers", []) or []:
+        pdir = Path(str(pr.get("path") or "")).expanduser()
+        info: dict = {"alias": pr.get("alias"), "path": pr.get("path"),
+                      "expanded": str(pdir), "reachable": pdir.is_dir(),
+                      "pages_jsonl": False, "pages_lines": None,
+                      "framework_version": None, "version_skew": False}
+        if info["reachable"]:
+            pj = pdir / "site" / "agent" / "pages.jsonl"
+            if pj.is_file():
+                info["pages_jsonl"] = True
+                try:
+                    with pj.open("r", encoding="utf-8", errors="replace") as f:
+                        info["pages_lines"] = sum(1 for ln in f if ln.strip())
+                except OSError:
+                    info["pages_lines"] = None
+            ver = _read_fw_version(pdir)
+            info["framework_version"] = ver
+            info["version_skew"] = bool(ver and self_ver and ver != self_ver)
+        out.append(info)
+    return out
+
+
+def _print_peers(peers: list[dict], self_ver: str | None) -> None:
+    if not peers:
+        return
+    print("\n  peers(跨实例引用,W-XRF-1:不可达仅 soft warning):")
+    for pe in peers:
+        if not pe["reachable"]:
+            print("    · %-10s → %s  ⚠️ 不可达(展开:%s)"
+                  % (pe["alias"], pe["path"], pe["expanded"]))
+            continue
+        if pe["pages_jsonl"]:
+            pj = "pages.jsonl %s 行" % (pe["pages_lines"]
+                                        if pe["pages_lines"] is not None else "?")
+        else:
+            pj = "pages.jsonl 缺失(对方未 build?)"
+        ver = "framework %s" % pe["framework_version"] if pe["framework_version"] \
+            else "framework/VERSION 不可读"
+        skew = "  ⚠️ 版本 skew(本实例 %s)" % (self_ver or "?") if pe["version_skew"] else ""
+        print("    · %-10s → %s  可达 · %s · %s%s"
+              % (pe["alias"], pe["expanded"], pj, ver, skew))
+
+
 # ── 子进程封装 ────────────────────────────────────────────────────────────
 
 def _run(cmd: list[str], root: Path, label: str, timeout: int = 3600,
@@ -241,6 +303,12 @@ def fetch_pipeline(root: Path, pl: dict, quiet: bool) -> dict:
         res["skipped"] = "push 型:人/CI 直投 raw,免抓取"
         return res
     adapter = pl.get("adapter")
+    if adapter == "manual":
+        # 哨兵语义(CONTRACT「manual 哨兵」):人工投放快照/文件进 raw_dir,
+        # 合法配置 —— 跳过抓取但不打「未声明适配器」警告
+        res["skipped"] = "manual 哨兵:人工投放快照/文件,免抓取"
+        res["manual"] = True
+        return res
     if not adapter:
         res["skipped"] = "未声明 adapter(config pipelines[].adapter)→ 跳过"
         res["warning"] = True
@@ -317,8 +385,9 @@ def _print_pipeline_pending(st: dict) -> None:
     extra = ""
     if st["kind"] == "rolling" and st["pending"]:
         extra = "(" + " · ".join(sorted({p["reason"] for p in st["pending"]})) + ")"
-    print("  管线 %-12s(%-7s):raw 库存 %d · 已 ingest %d · pending %d %s"
-          % (st["name"], st["kind"], st["raw_count"], st["ingested_count"],
+    tag = "[manual]" if st.get("adapter") == "manual" else ""
+    print("  管线 %-12s(%-7s)%s:raw 库存 %d · 已 ingest %d · pending %d %s"
+          % (st["name"], st["kind"], tag, st["raw_count"], st["ingested_count"],
              st["pending_count"], extra))
 
 
@@ -433,8 +502,12 @@ def cmd_status(args) -> tuple[dict, int]:
     cfg = _load_cfg(root)
     _select_only(cfg, getattr(args, "only", None))
     stats = all_pending(root, cfg, getattr(args, "only", None))
-    result = {"ok": True, "root": str(root), "pipelines": stats,
-              "pending_total": sum(st["pending_count"] for st in stats)}
+    peers = peers_status(root, cfg)
+    self_ver = _read_fw_version(root)
+    result = {"ok": True, "root": str(root), "framework_version": self_ver,
+              "pipelines": stats,
+              "pending_total": sum(st["pending_count"] for st in stats),
+              "peers": peers}
     if not args.json:
         print("=" * 60)
         print("  状态 / status(零网络)· root=%s" % root)
@@ -446,6 +519,7 @@ def cmd_status(args) -> tuple[dict, int]:
                       p["source_kind"] or "?", p["tier"]))
             if st["pending_count"] > 5:
                 print("      … 还有 %d 条" % (st["pending_count"] - 5))
+        _print_peers(peers, self_ver)
     return result, 0
 
 
