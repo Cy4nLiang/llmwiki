@@ -141,7 +141,7 @@ kind=rolling 的管线:一份源页代表整份滚动源;faithful 快照与 date
 ## 时效与验证 / Staleness
 <a id="staleness"></a>
 - 聚合页可选 frontmatter `verified: YYYY-MM-DD`(最后核实日期);stale 的说明书是危险品,不是旧文章。
-- 过期窗口(按 source_kind;lint 报「过期未核实」):<SLOT:staleness.rules>
+- (W-LNT-3) 过期窗口(按 source_kind;lint 机检报「过期未核实」):<SLOT:staleness.rules>
 - 操作类问题(怎么做 X)先查 `queries/` 缓存,未命中再进 concept 操作段(`_map` 决策表有此入口)。
 
 ## 会话启动 / Boot-up

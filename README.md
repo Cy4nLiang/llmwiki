@@ -1,6 +1,6 @@
 # llmwiki — 给每个项目一座 agent 自己维护的说明书库
 
-> v1.1.0 · 纯文件 · 零第三方依赖 · MIT
+> v1.1.1 · 纯文件 · 零第三方依赖 · MIT
 
 > **English summary** — the rest of this document is in Chinese.
 >
@@ -10,7 +10,7 @@
 >
 > **How**: clone → say `/wiki-init` in Claude Code (three modes: embedded into an existing repo / greenfield / adopt; rendering is done by a deterministic tool, never hand-written) → drop a note into `raw/inbox/` → say "ingest it". From then on the daily loop is just talking to the agent: capture → sync → ingest → query → lint → golden.
 >
-> **Proof over promises**: the protocol was measured on the 600+-page production knowledge base that incubated it (59.6K → 7.1K tokens per question, 8/8 honest refusals on unanswerable probes) and on the in-repo dogfood instance `knowledge/` (golden baseline P 1.000 / R 0.958, reproducible from `knowledge/evals/`). Instance measurements, not universal claims.
+> **Proof over promises**: the protocol was measured on the 600+-page production knowledge base that incubated it (59.6K → 7.1K tokens per question, 8/8 honest refusals — external to this repo, not reproducible here) and on the in-repo dogfood instance `knowledge/` (golden baseline P 1.000 / R 0.958, reproducible from `knowledge/evals/`). Instance measurements, not universal claims.
 
 ---
 
@@ -41,7 +41,7 @@ llmwiki 的回答:给项目建一座 **agent 自己维护、自己查询的知�
 
 ### 三分钟装进项目
 
-前提:macOS/Linux + Python 3(仅标准库);一级宿主 Claude Code(AGENTS.md-only 运行时按降级矩阵使用)。
+前提:macOS/Linux + Python 3(仅标准库);一级宿主 Claude Code;AGENTS.md-only 运行时可用——skills 不自动触发时,按契约内的文件路径直读各工作流 SKILL.md。
 
 ```bash
 git clone https://github.com/Cy4nLiang/llmwiki    # 实例内建议保留 git remote "framework" 供跟版
@@ -51,7 +51,7 @@ git clone https://github.com/Cy4nLiang/llmwiki    # 实例内建议保留 git re
 
 | 模式 | 适用场景 | 效果 |
 |---|---|---|
-| **embedded**(最常用) | 给现有代码仓库配知识库 | 渲染进 `knowledge/` 子目录;宿主 CLAUDE.md 只追加一段指针(含会话收尾捕获检查点),其余零污染 |
+| **embedded**(最常用) | 给现有代码仓库配知识库 | 渲染进 `knowledge/` 子目录;宿主 CLAUDE.md 由 agent 依固定模板**逐字追加**一段指针(含会话收尾捕获检查点),其余零污染 |
 | greenfield | 从零建独立知识库 | 十问问答 → 完整实例仓 |
 | adopt | 收编已有的笔记/文档堆 | 探测现有布局反推 config,绝不覆盖已有文件 |
 
@@ -68,11 +68,11 @@ python3 tools/lint_wiki.py --check-slots --target <实例目录>   # 冒烟:零�
 
 - **外部抓取**:按 `adapters/CONTRACT.md` 从 skeleton 复制出适配器(discover/fetch/status 三个子命令、只写 raw/+state/)即被 sync 自动接入;人工投放快照声明 `"adapter": "manual"`;内生知识(ADR/踩坑)走 inbox 零代码;
 - **多项目互引**:config 声明 `peers` 后用 `[[alias::slug]]` 跨实例引用(单向、1 跳、peer 不在场仅软警告);推荐建一个个人 hub 实例承载跨项目通用知识;
-- **框架升级**:`/wiki-upgrade`——版本差距清单 → 预备份 → frozen hash 校验覆盖 → render-once 三方合并 → lint/golden 门禁;冲突落 `<file>.upgrade-new` 逐 diff 处理,你的内容与本地修改**永不被静默覆盖**。
+- **框架升级**:`/wiki-upgrade`——版本差距清单 → 预备份 → frozen hash 校验覆盖 → render-once 三方合并 → lint 门禁 + golden 回归提醒(有 golden 必跑,W-UPG-2);冲突落 `<file>.upgrade-new` 逐 diff 处理,你的内容与本地修改**永不被静默覆盖**。
 
 ## 优势
 
-**vs 把知识塞进 CLAUDE.md** —— CLAUDE.md 是地图不是仓库:塞知识必膨胀,且每个会话全额付费。llmwiki 分层:契约(每会话必读,~200 行硬预算)→ 路由页(≤100 行,列出每个文件的 token 体量与读法)→ 页面(按需读,先 TL;DR)。**上下文预算是一等公民**,每条硬规则配一条机械 lint。
+**vs 把知识塞进 CLAUDE.md** —— CLAUDE.md 是地图不是仓库:塞知识必膨胀,且每个会话全额付费。llmwiki 分层:契约(每会话必读,~200 行硬预算)→ 路由页(≤100 行,列出每个文件的 token 体量与读法)→ 页面(按需读,先 TL;DR)。**上下文预算是一等公民**;绝大多数硬规则配机械 lint,7 条协议条款靠 eval/人审兜底(见 `framework/RULES.md`)。
 
 **vs RAG / 向量检索** —— 纯文件、可 grep、可读可审计,零服务、零 embedding、零索引运维;矛盾与时间线被显式管理(演进 / 对比 / ⚠️ 真矛盾三分,禁静默覆盖);查询会积累(答案归档);还有向量检索没有的器官——**纠偏区**:被 exact-match 推翻过的参数记忆事实域永久登记,防同类幻觉复发。
 
@@ -80,7 +80,7 @@ python3 tools/lint_wiki.py --check-slots --target <实例目录>   # 冒烟:零�
 
 **工程上的硬保证**:
 
-- **确定性**:实例的出生与升级全程由工具执行,agent 不手写协议正文;
+- **确定性**:实例的出生与升级全程由工具执行,agent 不手写协议正文(唯一例外:embedded 宿主指针段由 agent 依固定模板逐字追加);
 - **零依赖**:全部工具 Python 标准库;`python3 tests/run_ci.py` 一条命令 134 断言全闭环回归(含模拟升级四路径);
 - **升级契约**:逐文件三档归属(frozen / render-once / instance)+ sha256 派生清单 + 语义化版本 + 逐版本迁移清单(`framework/UPGRADING.md`),协议自身的每次演进都走自己的升级流程;
 - **评测闭环 day-one**:golden schema(8 题型,含 unanswerable 诚实探针与路由入口题)+ 零 LLM 确定性打分器 + any-of 组结算——协议改动可量化验收,模型选型用自家数据实测(「便宜模型不吃协议红利」已写入 playbook 警示)。
@@ -102,8 +102,8 @@ python3 tools/lint_wiki.py --check-slots --target <实例目录>   # 冒烟:零�
 
 ## 实测数字(具体实例实测,非通用承诺)
 
-- 孵化本框架的 600+ 页生产知识库:阅读协议实测 **59.6K → 7.1K tokens/题(8.4×)**,未收录问题 0-token 诚实拒答 8/8;
-- 仓内 dogfood 实例 `knowledge/`:从零到首批内容落库 **6.6 分钟**;golden 基线 **precision 1.000 / recall 0.958**,诚实探针 2/2(`knowledge/evals/` 内可复算)。
+- 孵化本框架的 600+ 页生产知识库(**仓外实例,本仓不可复核**):阅读协议实测 **59.6K → 7.1K tokens/题(8.4×)**,未收录问题 0-token 诚实拒答 8/8;
+- 仓内 dogfood 实例 `knowledge/`:骨架落成约 **1 分钟**、首批 10 篇内容全部落库**不到 7 分钟**(单次 dogfood 观察,逐步骤计时见 `knowledge/wiki/log.md`);golden 基线 **precision 1.000 / recall 0.958**,诚实探针 2/2(`knowledge/evals/` 内可复算)。
 
 本仓库全部文档统一此口径:数字只以具体实例实测引用,不作通用性能承诺;你的实例请用 `/wiki-golden` 建自己的基线——**框架只给方法,不给结论**。
 

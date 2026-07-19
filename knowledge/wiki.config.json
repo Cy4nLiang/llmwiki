@@ -1,6 +1,6 @@
 {
   "$schema": "schema/wiki.config.schema.json",
-  "framework_version": "1.1.0",
+  "framework_version": "1.1.1",
   "domain": {
     "name": "llmwiki-dev",
     "description": "llmwiki 框架开发知识库:设计决策/踩坑/机制说明书",

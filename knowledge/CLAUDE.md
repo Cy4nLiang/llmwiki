@@ -1,5 +1,5 @@
 <!--
-llmwiki 契约模板 · framework 1.1.0 · 归属:render-once
+llmwiki 契约模板 · framework 1.1.1 · 归属:render-once
 init 渲染一次后本文件归实例所有,可随实例演化(见 [演化](#co-evolution));升级走 base × 现文件 × 新模板三方合并。
 实例私有条款一律写入文末〈实例扩展附录〉(lint 豁免区),不动其余骨架——这是三方合并永不冲突的前提。
 渲染约束:槽位由 wiki.config.json 经 init_render.py 确定性填充(agent 只填值,不写正文);渲染产物硬预算 ≤220 行(lint 校验)。
@@ -144,7 +144,7 @@ verified: YYYY-MM-DD             # 聚合页可选:最后核实日期(见 [时�
 ## 时效与验证 / Staleness
 <a id="staleness"></a>
 - 聚合页可选 frontmatter `verified: YYYY-MM-DD`(最后核实日期);stale 的说明书是危险品,不是旧文章。
-- 过期窗口(按 source_kind;lint 报「过期未核实」):`howto` 365d
+- (W-LNT-3) 过期窗口(按 source_kind;lint 机检报「过期未核实」):`howto` 365d
 - 操作类问题(怎么做 X)先查 `queries/` 缓存,未命中再进 concept 操作段(`_map` 决策表有此入口)。
 
 ## 会话启动 / Boot-up

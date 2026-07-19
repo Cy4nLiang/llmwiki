@@ -1,6 +1,6 @@
 ---
 name: wiki-init
-description: 当用户要把 llmwiki 实例化成一个新知识库——说「初始化 wiki」「/wiki-init」「用 llmwiki 建库」「收编/adopt 现有目录」「把 wiki 嵌进这个项目」时触发。执行三模式实例化向导(greenfield 十问问答 / --adopt 布局探测反推 config / embedded 渲染进宿主子目录);agent 只负责问答与填 wiki.config.json,渲染一律交 init_render.py,收尾跑 lint --check-slots 冒烟。
+description: 当用户要把 llmwiki 实例化成一个新知识库——说「初始化 wiki」「/wiki-init」「用 llmwiki 建库」「收编/adopt 现有目录」「把 wiki 嵌进这个项目」时触发。执行三模式实例化向导(greenfield 十问问答 / adopt 布局探测反推 config / embedded 渲染进宿主子目录);agent 只负责问答与填 wiki.config.json,渲染一律交 init_render.py,收尾跑 lint --check-slots 冒烟。
 ---
 
 # wiki-init — 实例化向导(三模式)
@@ -45,7 +45,7 @@ description: 当用户要把 llmwiki 实例化成一个新知识库——说「�
 <a id="adopt-mode"></a>
 
 1. 探测现有布局:`raw/` 子目录与文件前缀 → 反推 `pipelines[]`;既有源页 frontmatter → 反推 facets / source_kinds / lang;无线索字段按十问默认值填,逐项向用户确认后写 config。
-2. `init_render.py --adopt`:只差量渲染**缺失**件;与已有文件同名的一律跳过,逐个 diff 呈现,由用户决定是否采纳——**绝不覆盖**。
+2. `init_render.py`(**不带 `--force`** 即差量模式):只渲染**缺失**件;与已有文件同名的一律跳过并逐个列出,由用户决定是否采纳——**绝不覆盖**(工具无 `--adopt` 旗标,adopt 是流程名不是参数)。
 3. 已有 CLAUDE.md:正文一字不动,只追加下方指针段。
 
 ## embedded:宿主子目录

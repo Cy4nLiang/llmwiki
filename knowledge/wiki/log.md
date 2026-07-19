@@ -99,3 +99,11 @@ grep '^## \[' wiki/log.md | tail -10
 ## [2026-07-20] upgrade | framework 1.0.0 -> 1.1.0(frozen 覆盖 3/新增 0, render-once 采用 1, 冲突 0, fork 候选 0)
 - 差距条目: 1.1.0(framework/UPGRADING.md);备份: state/tmp/pre-upgrade-1.0.0
 - 门禁: lint --manifest rc=0;golden: 提醒已打印,必跑(W-UPG-2)
+
+## [2026-07-20] note | 补录:M4 dogfood init 逐步骤计时(单次观察;README「实测数字」节出处)
+- init 会话 unix 时间戳锚点实测:读 SKILL+CLI 勘察+写 config+渲染 38s → check-slots 冒烟+空索引+config 归位复检 19s(**骨架落成合计 57s ≈ 1 分钟**)→ 仓内取证 146s → 撰写 10 篇 inbox 素材 165s → 宿主契约+AGENTS symlink 19s → 收尾验证(sync status+全量 lint)9s;**总计 396s ≈ 6.6 分钟**
+- 口径:单次 dogfood 观察、非通用承诺(W-* 数字纪律);双线核查(2026-07-20)指出此前该数字仓内无出处,本条补录为唯一出处
+
+## [2026-07-20] upgrade | framework 1.1.0 -> 1.1.1(frozen 覆盖 0/新增 0, render-once 采用 1, 冲突 0, fork 候选 0)
+- 差距条目: 1.1.1(framework/UPGRADING.md);备份: state/tmp/pre-upgrade-1.1.0
+- 门禁: lint --manifest rc=0;golden: 提醒已打印,必跑(W-UPG-2)

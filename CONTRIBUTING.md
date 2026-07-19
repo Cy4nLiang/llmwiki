@@ -17,7 +17,7 @@
   python3 tests/run_ci.py
   ```
 
-  hello-wiki 夹具闭环(渲染→幂等→lint→sync→eval→多分面→golden 校验→模拟升级),当前 119 项断言;产物全部写系统 tmp,不写仓库。提交前必须全绿。
+  hello-wiki 夹具闭环(渲染→幂等→lint→sync→eval→多分面→golden 校验→模拟升级),当前 134 项断言(以实跑输出为准);产物全部写系统 tmp,不写仓库。提交前必须全绿。
 - 改动 `tools/**` 等 frozen 档文件后,重新生成派生物 MANIFEST(勿手编):
 
   ```bash
