@@ -32,7 +32,7 @@ llmwiki 把「AI 维护的复利型知识库」协议层从参考实例(newpj4,6
 
 1. **取框架**
    ```bash
-   git clone <repo-url> llmwiki    # <repo-url>:(发布后替换为公开仓库地址)。或 degit;实例内建议保留 git remote "framework" 供跟版
+   git clone https://github.com/Cy4nLiang/llmwiki llmwiki    # 或 degit;实例内建议保留 git remote "framework" 供跟版
    ```
 2. **实例化**:在 Claude Code 会话内触发 `/wiki-init`(skill 未触发时直接 Read `.claude/skills/wiki-init/SKILL.md`)。三模式:greenfield(全新)/ adopt(收编存量仓库,绝不覆盖已有文件)/ embedded(渲染进宿主子目录 `knowledge/`,宿主 CLAUDE.md 只追加指针段)。十问收集 domain 取值 → 写 `wiki.config.json` → 渲染 + 冒烟:
    ```bash
@@ -102,7 +102,7 @@ llmwiki/
 | M1 骨架 | 契约挖空+锚点化+规则 ID、rules/meta/skills 模板、config schema、init_render + /wiki-init、lint --check-slots | **完成**(v0.1.0) |
 | M2 工具 | 7 件工具去 domain 化 + lib/fm.py、fetcher 契约、local_notes/inbox、hello-wiki 夹具 CI(79 断言) | **完成**(v0.2.0) |
 | M3 质量 | 评测打包(题型/playbook/路由入口题)、升级协议(upgrade.py:hash 校验/三方合并/预备份/门禁)、跨实例引用收尾(peers 状态/版本 skew)、extras(serve/i18n)、安全默认 | **完成**(v0.3.0,CI 119 断言) |
-| M4 发布 | dogfood 内嵌实例(knowledge/,真实 ingest+golden 基线)+ 发布工程(CONTRIBUTING/.gitattributes/开发契约)| **完成**(v1.0.0;发布时替换 <repo-url> 占位) |
+| M4 发布 | dogfood 内嵌实例(knowledge/,真实 ingest+golden 基线)+ 发布工程(CONTRIBUTING/.gitattributes/开发契约)| **完成**(v1.0.0;已发布) |
 
 ## 贡献与回流
 
