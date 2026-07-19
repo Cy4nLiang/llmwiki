@@ -1,0 +1,22 @@
+# llmwiki .gitignore —— 框架仓库自用,同时是实例的安全默认模板
+# W-SEC-2:凭证只走环境变量,禁止落 config/manifest;state/、*.env 不入版本库
+
+# 实例运行态(工具产物/采集簿记,可随时重建)
+state/
+site/
+
+# 凭证与环境变量(W-SEC-2)
+*.env
+.env
+.env.*
+
+# Python 杂物
+__pycache__/
+*.pyc
+
+# OS 杂物
+.DS_Store
+
+# tests/ 夹具渲染产物目录(CI 由 hello-wiki 夹具渲染出的临时实例,不入库)
+tests/**/rendered/
+tests/**/tmp/

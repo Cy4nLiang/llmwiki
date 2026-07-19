@@ -1,0 +1,248 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "llmwiki wiki.config.json",
+  "description": "实例唯一配置(Spec §2,字段名 frozen)。本文件是规范文档:运行时校验由 tools/init_render.py 内的手写校验器实现(仅 Python 标准库,不依赖 jsonschema 库),覆盖必填/类型/枚举/模式;init(渲染前)与 lint --check-config(日常)双处校验。自由扩展一律走顶层与各对象的 x-* 命名空间(高频扩展经回流进 MINOR 版)。",
+  "type": "object",
+  "required": ["framework_version", "domain", "pipelines"],
+  "additionalProperties": false,
+  "patternProperties": {
+    "^x-": {}
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "可选:指向本 schema 的路径(如 \"schema/wiki.config.schema.json\"),便于编辑器提示"
+    },
+    "framework_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+([-.+][0-9A-Za-z.-]+)?$",
+      "description": "实例当前钉版的框架语义版本(升级锚点);与实例 framework/VERSION 对照,不一致时 init/lint 提示"
+    },
+    "domain": {
+      "type": "object",
+      "required": ["name", "description", "lang", "trust_posture"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": {} },
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "description": "实例名(ASCII slug);渲染槽位 domain.name"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "本库收什么/为谁服务;渲染进契约 Domain 段与 _map 头部宣言(槽位 domain.description)"
+        },
+        "lang": {
+          "enum": ["zh", "en"],
+          "description": "用户交互语言;映射槽位 lang.clause 的固定文案(封闭枚举),并决定 budgets.est_tokens_profile 缺省(zh→cjk,否则 latin)"
+        },
+        "trust_posture": {
+          "enum": ["internal-authoritative", "official-biased", "needs-verification"],
+          "description": "信任姿态,映射槽位 trust.clause 的固定文案:internal-authoritative=内部一手材料即权威(代码库/内部文档);official-biased=官方一手权威但有立场(去营销化+「官方声明,未必第三方验证」标注);needs-verification=来源默认待验证(交叉验证后方可进聚合页)"
+        }
+      }
+    },
+    "facets": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/definitions/facet" },
+      "description": "横切维度(0..n);非空时装载 multi_facet 条件模块(<!--BEGIN:multi_facet-->,索引分片/徽章/跨值 synthesis 约定);空数组=单 facet 库,模块整块不渲染"
+    },
+    "pipelines": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/pipeline" },
+      "description": "源集合注册表(sync 驱动);任一条 kind=rolling 时装载 rolling_source 条件模块"
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": { "^x-": {} },
+      "properties": {
+        "page_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8000,
+          "description": "单页 token 预算,超线拆「精华主页+子页」(W-PAGE-1);渲染槽位 budgets.page_tokens"
+        },
+        "map_lines": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100,
+          "description": "wiki/_map.md 行数硬预算(W-LNT-2);渲染槽位 budgets.map_lines"
+        },
+        "boot_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4000,
+          "description": "会话启动例程(稳定→易变)token 预算;渲染槽位 budgets.boot_tokens"
+        },
+        "raw_slice_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1200,
+          "description": "eval 记账口径:raw 切片按此值 flat 计费(「grep 不算 read」)"
+        },
+        "est_tokens_profile": {
+          "enum": ["cjk", "latin"],
+          "description": "est_tokens 估算校准 profile;缺省依 domain.lang 推导"
+        }
+      }
+    },
+    "ingest_tiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": { "^x-": {} },
+      "description": "ingest 分档(Spec §5.1)——防剪藏不变式 W-ING-1 的参数化;light 档必须记 followups「待晋升」,light 占比 >50% lint 告警",
+      "properties": {
+        "default": {
+          "enum": ["full", "light"],
+          "default": "full",
+          "description": "未被 by_source_kind 覆盖的 source_kind 走的档位"
+        },
+        "by_source_kind": {
+          "type": "object",
+          "additionalProperties": { "enum": ["full", "light"] },
+          "description": "按 source_kind 覆盖档位;键应属于各 pipelines[].source_kinds 的并集(校验器仅 warning)"
+        },
+        "min_touch": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "full": { "type": "integer", "minimum": 0, "default": 5 },
+            "light": { "type": "integer", "minimum": 0, "default": 1 }
+          },
+          "description": "每档 ingest 必须 touch 的聚合页数下限(W-ING-1)"
+        }
+      }
+    },
+    "typology_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "五类页面(类型名 frozen:source/entity/concept/synthesis/query)的 domain 语义;渲染槽位 typology.table;三份 canonical 映射表见 Spec §4.1",
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "entity": { "type": "string", "minLength": 1 },
+        "concept": { "type": "string", "minLength": 1 },
+        "synthesis": { "type": "string", "minLength": 1 },
+        "query": { "type": "string", "minLength": 1 }
+      }
+    },
+    "staleness": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": { "^x-": {} },
+      "description": "说明书库时效语义(Spec §4.3):超窗且 frontmatter verified: 未更新 → lint 报「过期未核实」;渲染槽位 staleness.rules",
+      "properties": {
+        "by_source_kind": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9]+d$",
+            "description": "过期窗口,天数字符串(如 \"180d\")"
+          }
+        }
+      }
+    },
+    "peers": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/definitions/peer" },
+      "description": "跨实例引用声明(Spec §17,W-XRF-1);非空时装载 peers 条件模块(引用语法 [[alias::slug]]、1 跳封顶、soft-lint);路径为本机环境信息,不入发布物、分享前脱敏(W-SEC-2)"
+    },
+    "x-extensions": {
+      "type": "object",
+      "description": "自由命名空间(逃生舱之一);框架工具与校验器不解释其内容"
+    }
+  },
+  "definitions": {
+    "facet": {
+      "type": "object",
+      "required": ["key", "values"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": {} },
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "description": "源页 frontmatter 字段名(如 vendor);渲染槽位 facets.fields"
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "封闭取值枚举"
+        },
+        "shard_index": {
+          "type": "boolean",
+          "default": true,
+          "description": "true 时来源索引按该 facet 分片(index-sources-<value>.md)"
+        },
+        "badges": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "值→徽章(emoji)映射,渲染槽位 facets.badges;允许特殊键 cross 标注跨值页(如 {\"openai\":\"🟢\",\"cross\":\"🔀\"})"
+        }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "required": ["name", "kind", "raw_dir"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": {} },
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "description": "管线名,实例内唯一"
+        },
+        "kind": {
+          "enum": ["pull", "push", "rolling"],
+          "description": "三型(Spec §7):pull=适配器 discover/fetch 抓外源;push=人/CI 直投 raw/(pending 由目录 diff 成立,免适配器);rolling=整体覆盖滚动源(faithful/dated 分离,pending 按版本 diff)"
+        },
+        "raw_dir": {
+          "type": "string",
+          "pattern": "^raw/[A-Za-z0-9._/-]+$",
+          "description": "落盘目录,必须位于 raw/ 下(W-ARCH-1 不可变区);init_render 负责创建"
+        },
+        "prefix": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]*$",
+          "default": "",
+          "description": "raw 文件与 wiki/sources/ 源页共享的文件名前缀(多管线防撞);渲染进 source.naming_rules"
+        },
+        "adapter": {
+          "type": "string",
+          "description": "fetcher 适配器路径(实例自写,如 tools/adapters/vendor_docs.py;合规判据见 adapters/CONTRACT.md);push 型免;pull/rolling 型缺省时 sync 跳过该管线并提示(校验器 warning)"
+        },
+        "source_kinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "description": "该管线产出的 source_kind 枚举;全管线并集渲染槽位 source.kind_enum,并供 ingest_tiers.by_source_kind 与 staleness.by_source_kind 引用"
+        }
+      }
+    },
+    "peer": {
+      "type": "object",
+      "required": ["alias", "path"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": {} },
+      "properties": {
+        "alias": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "description": "引用别名,实例内唯一;引用语法 [[alias::path/to/slug|显示名]](与仓内 wikilink 无歧义共存)"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "peer 实例根目录的本机路径(支持 ~);检索先读对方 site/agent/pages.jsonl,跨实例 1 跳封顶不递归;不可达仅 soft warning(W-XRF-1)"
+        }
+      }
+    }
+  }
+}

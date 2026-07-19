@@ -1,0 +1,77 @@
+{
+  "$schema": "schema/wiki.config.schema.json",
+  "framework_version": "0.1.0",
+  "domain": {
+    "name": "myproj-knowledge",
+    "description": "myproj 代码库的项目内生说明书:架构决策(ADR)、踩坑记录、团队约定、操作 how-to 与外部依赖文档快照——让 agent 在本仓工作时先查库再动手,踩过的坑不踩第二次。",
+    "lang": "zh",
+    "trust_posture": "internal-authoritative"
+  },
+  "facets": [],
+  "pipelines": [
+    {
+      "name": "notes",
+      "kind": "push",
+      "raw_dir": "raw/inbox",
+      "prefix": "",
+      "source_kinds": ["adr", "pitfall", "decision", "howto"],
+      "x-note": "捕获协议投递口(W-CAP-1):宿主会话收尾检查点顺手投递 raw/inbox/<date>-<slug>.md(frontmatter: title/date/kind);投递≠整合,下次 wiki-sync 报 pending 后走 light 档 ingest;push 型免适配器"
+    },
+    {
+      "name": "vendor-docs",
+      "kind": "pull",
+      "raw_dir": "raw/vendor-docs",
+      "prefix": "vd-",
+      "source_kinds": ["howto", "reference"],
+      "x-note": "外部依赖官方文档快照。adapter 由 M2 提供(tools/adapters/vendor_docs.py,按 adapters/CONTRACT.md 实现 discover/fetch/status);M1 阶段本管线仅注册,sync 自动跳过无适配器管线"
+    },
+    {
+      "name": "conventions",
+      "kind": "rolling",
+      "raw_dir": "raw/conventions",
+      "prefix": "conv-",
+      "source_kinds": ["convention"],
+      "x-note": "滚动源:整份团队约定/编码规范文档整体覆盖快照(faithful 与 dated 派生分离,变化记「演进」,W-ING-3);adapter 同样 M2 提供,当前可人工把快照放入 raw/conventions/ 过渡"
+    }
+  ],
+  "budgets": {
+    "page_tokens": 8000,
+    "map_lines": 100,
+    "boot_tokens": 4000,
+    "raw_slice_tokens": 1200,
+    "est_tokens_profile": "cjk"
+  },
+  "ingest_tiers": {
+    "default": "full",
+    "by_source_kind": {
+      "adr": "light",
+      "pitfall": "light"
+    },
+    "min_touch": {
+      "full": 5,
+      "light": 1
+    }
+  },
+  "typology_map": {
+    "source": "ADR/踩坑记录/复盘/约定快照/外部依赖文档快照",
+    "entity": "模块/服务/依赖库",
+    "concept": "架构模式/团队约定/故障模式",
+    "synthesis": "跨模块设计叙事/跨事故规律",
+    "query": "how-do-I-X 问答缓存"
+  },
+  "staleness": {
+    "by_source_kind": {
+      "howto": "365d",
+      "reference": "180d",
+      "convention": "180d"
+    }
+  },
+  "peers": [
+    {
+      "alias": "hub",
+      "path": "~/wikis/personal-hub",
+      "x-note": "个人 hub 实例(跨项目共享知识:工具用法/通用约定/跨项目踩坑);引用写作 [[hub::concepts/some-slug|显示名]];本机路径不入发布物,分享 config 前脱敏(W-XRF-1/W-SEC-2)"
+    }
+  ],
+  "x-extensions": {}
+}

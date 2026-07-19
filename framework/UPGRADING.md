@@ -1,0 +1,55 @@
+# UPGRADING — 逐版本迁移说明
+
+> 面向实例维护者(人 + agent):框架每发一个版本,本文件追加一节,列出实例跟版所需的全部动作。
+> 实例侧执行入口:`/wiki-upgrade`(skill 未触发时直接 Read `.claude/skills/wiki-upgrade/SKILL.md`);
+> 其第 2 步「规则 ID 差距清单」直接消费本文件的迁移清单表。
+> semver 判级:MAJOR = frozen 工具行为/页面格式字段语义变更;MINOR = 新增可选模块/新增规则/模板增强;PATCH = 文案与锚点修订。
+
+## 条目格式约定
+
+每个版本条目按以下模板书写,新版本在「条目区」**顶部**插入(新→旧)。
+迁移清单**逐条引用 `W-*` 规则 ID**(总表见 `framework/RULES.md`)——lint 报告 / CHANGELOG / 本文件共用同一命名空间,勿另造引用方式;无对应规则的纯工程变更填 `—` 并在「实例动作」写明。
+
+```
+## X.Y.Z — YYYY-MM-DD(判级:MAJOR|MINOR|PATCH)
+
+### 变更摘要
+- 一句话一条,写「变了什么」,不写实现细节。
+
+### 迁移清单(逐条引规则 ID)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| W-XXX-n | 新增 / 语义变更 / 文案 | 例:契约追加 Capture 节;或「无动作」 | frozen / render-once / instance |
+
+### frozen 覆盖清单
+- tools/foo.py —— hash 变更;MANIFEST 校验干净则整体覆盖,有本地改动 → fork 或回退二选一(W-UPG-1)
+
+### 验收
+- lint 全绿 + golden 门禁不回退(W-UPG-2);回滚锚点 = 升级前自动打的 tag。
+```
+
+写作约束:
+- 「实例动作」必须可执行可核对(具体文件 + 具体操作),不许写「按需调整」;
+- 语义变更条目必须写明旧行为 → 新行为,供 agent 判断实例是否受影响;
+- 「实例扩展附录」段与 `.claude/rules/local-*.md` 为逃生舱,**承诺永不合并冲突**——任何版本的迁移动作都不得要求改写这两处。
+
+---
+
+## 0.1.0 — 2026-07-19(判级:首版,无迁移)
+
+M1 骨架首发,此前无实例存在,无迁移动作;本条仅立基线:
+
+### 基线内容
+- 契约模板 `CLAUDE.template.md`(19 槽位注册表 + 命名锚点 + 3 个条件模块 multi_facet / rolling_source / peers);
+- 规则总表 `framework/RULES.md`(26 条 `W-*`:frozen 22 / convention 4);
+- `.claude/rules/`(source-page / aggregate-pages,冻结骨架)、`.claude/agents/wiki-reader.template.md`;
+- 向导 skills(wiki-init / wiki-upgrade / wiki-golden)+ 实例本地工作流模板(templates/skills/ 四件);
+- wiki 骨架模板(templates/wiki/ 五件)、`schema/wiki.config.schema.json` + `wiki.config.example.json`;
+- 工具:`init_render.py`(确定性渲染)、`lint_wiki.py`(--check-slots / --check-config)、`gen_manifest.py`。
+
+### 升级锚点自本版生效
+- 实例 `framework/VERSION` 钉版 + `framework/base/` 模板快照(init_render 落盘)即三方合并基线;
+- `framework/MANIFEST.json` 为派生物(W-IDX-1),frozen 漂移以其 sha256 判定(W-UPG-1)。
+
+### 已知未落位(M2/M3 交付,届时按判级出条目)
+- sync / build_index / build_site / eval_retrieval / eval_compare / lib/fm.py、adapters(fetcher 契约 + local_notes)、evals 打包、extras、tests/hello-wiki CI 夹具、MANIFEST hash 挂 sync 常跑路径。

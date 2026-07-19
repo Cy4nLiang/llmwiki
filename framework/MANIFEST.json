@@ -1,0 +1,142 @@
+{
+  "_comment": "派生物(W-IDX-1):python3 tools/gen_manifest.py 生成,勿手编;tier 语义见 Spec §1.3",
+  "framework_version": "0.1.0",
+  "files": [
+    {
+      "path": ".claude/agents/wiki-reader.template.md",
+      "tier": "render-once",
+      "sha256": "a13b599111abd522df149e52638726057ea1951a175984e3addd33087ce23d08"
+    },
+    {
+      "path": ".claude/rules/aggregate-pages.md",
+      "tier": "render-once",
+      "sha256": "56158a92f629d67a57ff2d49974fdc489fa024f3bfaa17f22e7ed980e6683f1a"
+    },
+    {
+      "path": ".claude/rules/source-page.md",
+      "tier": "render-once",
+      "sha256": "a7f3bc822cc5ea6da52ec459897f4e167bbc25188fcae9ae2f1c707a8c52663b"
+    },
+    {
+      "path": ".claude/skills/wiki-golden/SKILL.md",
+      "tier": "render-once",
+      "sha256": "8520ff19e5df1b1d2ac6b1c294877e346523a77f13e415d97ef8f494c8c7d617"
+    },
+    {
+      "path": ".claude/skills/wiki-init/SKILL.md",
+      "tier": "render-once",
+      "sha256": "89e7516203caabc41af72260531de877f60a3fab4465bbecf8a63a67c15f817f"
+    },
+    {
+      "path": ".claude/skills/wiki-upgrade/SKILL.md",
+      "tier": "render-once",
+      "sha256": "3b9b4489f750d4fb8b7befcbab1606c4e000c27bb1286c0d376ac2f0ae6a3c8e"
+    },
+    {
+      "path": ".gitignore",
+      "tier": "meta",
+      "sha256": "cef9ed87e2cebff9c4cec2e71713d1827d68a2851f2d853803b9eaac110624ea"
+    },
+    {
+      "path": "CLAUDE.template.md",
+      "tier": "render-once",
+      "sha256": "1870ee79d005e11669d422871c61f684cff4a6a08145f448a40cbab8a536fd74"
+    },
+    {
+      "path": "LICENSE",
+      "tier": "meta",
+      "sha256": "20da4847253181a0b81694a95ed891e335b5314e5320f371590544c465c77f75"
+    },
+    {
+      "path": "README.md",
+      "tier": "meta",
+      "sha256": "583e0e76edb8df155f9dc31a55997749ba21dc56da2d8b64cefe2421d654884e"
+    },
+    {
+      "path": "framework/RULES.md",
+      "tier": "meta",
+      "sha256": "e95cf70b39f3abc696d20dcbe5071252fcc70a5bee3fbd3c51d5cd8b855df49f"
+    },
+    {
+      "path": "framework/UPGRADING.md",
+      "tier": "meta",
+      "sha256": "c8f25e8ad26a1acaea469d9c2332082c7b9745bb843b13d4548d9da471576196"
+    },
+    {
+      "path": "framework/VERSION",
+      "tier": "meta",
+      "sha256": "e9dd8507f4bf0c6f42458e41aea833ad0bd3f6127272335eee9bf4d58541ed67"
+    },
+    {
+      "path": "schema/wiki.config.schema.json",
+      "tier": "frozen",
+      "sha256": "22a4f867f20ea6e60dbdbca3d48b9dfed573e55ea7a4d5fcb3fbb0838d4e2e41"
+    },
+    {
+      "path": "templates/skills/wiki-ingest/SKILL.md",
+      "tier": "render-once",
+      "sha256": "e218e01def5111c5f049d4ca5092d6e22fc5f73dd8abceeadcde8870a8632fab"
+    },
+    {
+      "path": "templates/skills/wiki-lint/SKILL.md",
+      "tier": "render-once",
+      "sha256": "bdb6958ad80d0f0ffa429d809b52226c96dcb55562a1c50627262bd86288651d"
+    },
+    {
+      "path": "templates/skills/wiki-query/SKILL.md",
+      "tier": "render-once",
+      "sha256": "37b784c139f54867148a47509b48c358b847440638a5a61152af0ced4de1e442"
+    },
+    {
+      "path": "templates/skills/wiki-sync/SKILL.md",
+      "tier": "render-once",
+      "sha256": "bcdb0546b6146ed04cc2afe193211dd8df6cc8d6dca4ad82342be051612d97a8"
+    },
+    {
+      "path": "templates/wiki/_map.md",
+      "tier": "render-once",
+      "sha256": "5946974c19973e0646c22db5376c394526a91bfd69bab7a3d70b9d13da4b733a"
+    },
+    {
+      "path": "templates/wiki/contradictions.md",
+      "tier": "render-once",
+      "sha256": "6ee936c5e5d22b07858aa1ea363983201db641e0f99f50d1051fddc1d8b2bb9f"
+    },
+    {
+      "path": "templates/wiki/followups.md",
+      "tier": "render-once",
+      "sha256": "2464d01634ef379381cebbfc54ab3dfb0fb76f314d746ac3953cb593f68a06ba"
+    },
+    {
+      "path": "templates/wiki/log.md",
+      "tier": "render-once",
+      "sha256": "d2ee256b93149056348726ed8f793a4f96a0df5776e4f758a7ddbc692a62a315"
+    },
+    {
+      "path": "templates/wiki/overview.md",
+      "tier": "render-once",
+      "sha256": "6c5cfdae748d360b4450b0d6c66bd9d16de0a9a1ae5bb66ef52dbe3e0cd8c5f0"
+    },
+    {
+      "path": "tools/gen_manifest.py",
+      "tier": "frozen",
+      "sha256": "b2782a1826e964c582d77c4224627c4aafbb36df66f9632868be42c266305059"
+    },
+    {
+      "path": "tools/init_render.py",
+      "tier": "frozen",
+      "sha256": "a1783929169fb45fc1e8ef3d1eb46198aff329739ee9b52535cbeaf01c5ed7db"
+    },
+    {
+      "path": "tools/lint_wiki.py",
+      "tier": "frozen",
+      "sha256": "d3e5eaee27877b2e9be49fc8bd7bd0d828882e6cbed9ffafc58752c5110ee3a0"
+    },
+    {
+      "path": "wiki.config.example.json",
+      "tier": "meta",
+      "sha256": "7a02dc1eba8cf310b566890e4dcaadc39c200f466b19f98259bf17052b184af1"
+    }
+  ],
+  "generated": "2026-07-19"
+}
