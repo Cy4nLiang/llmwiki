@@ -89,3 +89,13 @@ grep '^## \[' wiki/log.md | tail -10
 ## [2026-07-20] upgrade | framework 0.3.0 -> 1.0.0(frozen 覆盖 3/新增 3, render-once 采用 3, 冲突 0, fork 候选 0)
 - 差距条目: 1.0.0(framework/UPGRADING.md);备份: state/tmp/pre-upgrade-0.3.0
 - 门禁: lint --manifest rc=0;golden: 提醒已打印,必跑(W-UPG-2)
+
+## [2026-07-20] note | golden any-of 组校准修订(v0.2):6 题假阴性消除,基线 R 0.633 → 0.958
+- 背景:上条基线 note 已判定 recall 缺口 100% 来自 weight-1 替代/下钻路径进分母(校准结构缺陷,非路由缺陷);打分器今日起原生支持 golden_groups(组语义=同一信息多条获取路径任一命中即满;规范见 evals/golden.schema.json 与 question-types.md any-of 节)
+- 修订(按「答案对才修 golden」单行道,基线 run 答案全对、miss_must 全空):q01/q02/q03/q05/q09 —— 枢纽页与替代/下钻单点合为 2 权组,原单点删除;q06 —— raw 文件留 2 级单点(W-QRY-1 逐字要求,绝不入组),源页+concept 两条导航路径合为 1 权组;q04/q10(单页命中集)与 q07/q08(unanswerable 禁组)不改。逐题改法与理由已写入各题 notes
+- 新旧对照(同一 run:evals/runs/2026-07-20-baseline.jsonl,零重跑):precision 1.000 → 1.000;recall 0.633 → 0.958(n=8);problem_q 0 → 0;唯一未满题 q06 R 0.667——grep 直达 raw 的最优路径不读导航组,属有意保留的 1 权导航项,复跑常态化后再议降权
+- 机检:--check-golden 10 题 0 错误 0 警告;W-UPG-2 门禁对照基准自本条起更新为 P 1.000 / R 0.958
+
+## [2026-07-20] upgrade | framework 1.0.0 -> 1.1.0(frozen 覆盖 3/新增 0, render-once 采用 1, 冲突 0, fork 候选 0)
+- 差距条目: 1.1.0(framework/UPGRADING.md);备份: state/tmp/pre-upgrade-1.0.0
+- 门禁: lint --manifest rc=0;golden: 提醒已打印,必跑(W-UPG-2)

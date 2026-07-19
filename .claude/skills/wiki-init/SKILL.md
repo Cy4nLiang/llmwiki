@@ -53,6 +53,9 @@ description: 当用户要把 llmwiki 实例化成一个新知识库——说「�
 
 1. 渲染根 = 宿主子目录(默认 `knowledge/`,第 1 问可改);实例全部文件收在该目录内,宿主根命名空间零污染(W-ARCH-3)。
 2. 宿主 CLAUDE.md **只追加**下方指针段,绝不覆盖、绝不改写其余内容;宿主无 AGENTS.md 时可选建 symlink → CLAUDE.md,已有则不动。
+3. **嵌套宿主**:宿主自身也可能位于另一个 llmwiki 风格实例/契约树内(如 monorepo 子项目或 worktree)——多层 CLAUDE.md 依 Claude Code 就近加载规则共存,无需特判。
+   边界规则:每层契约只管辖自己的目录树,指针段只指向直属 knowledge 子目录;
+   跨层检索走 peers(W-XRF-1)互引,不直读上层 wiki。
 
 ## 宿主 CLAUDE.md 指针段标准文本
 <a id="host-pointer-block"></a>

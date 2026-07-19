@@ -1,6 +1,6 @@
 {
   "$schema": "schema/wiki.config.schema.json",
-  "framework_version": "1.0.0",
+  "framework_version": "1.1.0",
   "domain": {
     "name": "myproj-knowledge",
     "description": "myproj 代码库的项目内生说明书:架构决策(ADR)、踩坑记录、团队约定、操作 how-to 与外部依赖文档快照——让 agent 在本仓工作时先查库再动手,踩过的坑不踩第二次。",

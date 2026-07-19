@@ -4,7 +4,7 @@ llmwiki 是「LLM 主导维护的复利型知识库」框架:模板 + 工具 + �
 
 ## 开发验证
 
-- 全量回归:`python3 tests/run_ci.py`(hello-wiki 夹具全闭环,0.3.0 时点 119 断言;必须全绿才可提交)。
+- 全量回归:`python3 tests/run_ci.py`(hello-wiki 夹具全闭环,全量断言;必须全绿才可提交)。
 - 工具一律纯 Python 标准库;frozen 档(tools/schema/docs/evals/adapters/extras)改动后必跑 `python3 tools/gen_manifest.py` 重导 MANIFEST。
 
 ## 发布流程

@@ -8,13 +8,20 @@
 ■ golden 文件(默认 <root>/evals/golden.jsonl,--golden 覆盖)每行一个 JSON 对象:
     {"qid": "...", "type": "single-hop|multi-hop|comparison|aggregation|timeline|
      exact-verbatim|unanswerable|route", "question": "...",
-     "golden": {"<wiki 相对 slug>": 2|1, ...}, "answer_keys": ["...", ...]}
+     "golden": {"<wiki 相对 slug>": 2|1, ...},
+     "golden_groups": [{"weight": 2|1, "pages": ["<slug>", ...]}, ...]  # 可选,any-of 组
+     "answer_keys": ["...", ...]}
   分级语义:2 = 必读页(应被打开),1 = 有帮助页(打开算加分,权重为 2 级页的一半)。
+  any-of 组(golden_groups,2026-07-20):组语义 =「同一信息的多条获取路径,任一命中即满」——
+  files_read ∩ 组 pages ≠ ∅ 记该组满权一次;recall 分母 = Σ单点权重 + Σ组权重;precision 对
+  golden 单点或任一组成员均计 useful。组约束(违规 = 结构错误 exit 2):weight ∈ 2|1、
+  pages 归一后 ≥2 页且互不重复、组页不得与 golden 单点重复、unanswerable 题禁止有组。
+  无组的存量 golden 打分逐位不变(向后兼容;newpj4 存量 16 题对拍复证)。
   规范文档 = evals/golden.schema.json(M3):载入时按其手写校验——结构错误(缺必填/类型不符/
-  golden 值非 1|2/unanswerable 带非空 golden/qid 重复)→ exit 2;未知 type 经别名映射
-  (exact-version→exact-verbatim、how-do-I→single-hop、route-entry→route)后仍未知 → warning
-  不阻断,按普通检索题打分。--check-golden <path> 只校验不打分(exit 0 干净 / 1 有 warning /
-  2 结构错误)。
+  golden 值非 1|2/unanswerable 带非空 golden 或非空 golden_groups/组约束违规/qid 重复)
+  → exit 2;未知 type 经别名映射(exact-version→exact-verbatim、how-do-I→single-hop、
+  route-entry→route)后仍未知 → warning 不阻断,按普通检索题打分。--check-golden <path>
+  只校验不打分(exit 0 干净 / 1 有 warning / 2 结构错误)。
 
 ■ unanswerable 诚实探针(golden 空 {},W-QRY-3):
   判定改 answer_keys 锚点匹配——golden 的 answer_keys 收敛为「未收录声明」锚点关键词
@@ -97,13 +104,32 @@ CANONICAL_TYPES = ("single-hop", "multi-hop", "comparison", "aggregation",
 # how-do-I = hello-wiki 夹具存量(queries 缓存单跳);route-entry = route 早期草案名。
 TYPE_ALIASES = {"exact-version": "exact-verbatim", "how-do-I": "single-hop",
                 "how-do-i": "single-hop", "route-entry": "route"}
-KNOWN_FIELDS = {"qid", "type", "question", "golden", "answer_keys", "notes"}
+KNOWN_FIELDS = {"qid", "type", "question", "golden", "golden_groups", "answer_keys", "notes"}
+GROUP_FIELDS = {"weight", "pages"}  # any-of 组条目的已知字段(schema golden_groups.items)
 UNANSWERABLE_KEY_MAXLEN = 20  # 诚实探针锚点长度上限(schema 同值);超长疑似整句,锚点匹配必失
 
 
 def canon_type(t) -> str:
     """type 归一:别名映射到规范题型;未知原样返回(调用方判 warning)。"""
     return TYPE_ALIASES.get(t, t) if isinstance(t, str) else ""
+
+
+def norm_groups(row: dict) -> list[dict]:
+    """提取并归一 any-of 组:[{"weight": 2|1, "pages": [norm 后路径, ...]}, ...]。
+    只做形状宽容提取(打分用);合法性裁决归 validate_golden(结构错误 → exit 2,
+    打分主流程在校验门之后,故此处见到的数据已保证合法)。"""
+    out = []
+    raw = row.get("golden_groups")
+    if not isinstance(raw, list):
+        return out
+    for grp in raw:
+        if not isinstance(grp, dict):
+            continue
+        pages = grp.get("pages")
+        out.append({"weight": grp.get("weight"),
+                    "pages": [norm(p) for p in pages if isinstance(p, str)]
+                    if isinstance(pages, list) else []})
+    return out
 
 
 def validate_golden(rows: list[dict]) -> tuple[list[str], list[str]]:
@@ -146,6 +172,54 @@ def validate_golden(rows: list[dict]) -> tuple[list[str], list[str]]:
                     errors.append("%s: golden 含非法键 %r" % (tag, k))
                 if v not in (1, 2):
                     errors.append("%s: golden[%r] = %r(枚举 2=必读 / 1=有帮助)" % (tag, k, v))
+        # any-of 组(golden_groups,可选;约束违规 = 结构错误)
+        groups = row.get("golden_groups")
+        n_groups = 0                # 合法提取到的组数(跨字段一致性用)
+        has_w2_group = False
+        if groups is not None:
+            if not isinstance(groups, list):
+                errors.append("%s: golden_groups 须为数组" % tag)
+            else:
+                n_groups = len(groups)
+                single_keys = {norm(k) for k in gold if isinstance(k, str)}
+                seen_group_pages: set = set()
+                for j, grp in enumerate(groups, 1):
+                    gtag = "%s golden_groups[%d]" % (tag, j)
+                    if not isinstance(grp, dict):
+                        errors.append("%s: 组须为对象 {weight, pages}" % gtag)
+                        continue
+                    if grp.get("weight") not in (1, 2):
+                        errors.append("%s: weight = %r(枚举 2=必读〔任一路径〕 / 1=有帮助〔任一路径〕)"
+                                      % (gtag, grp.get("weight")))
+                    elif grp.get("weight") == 2:
+                        has_w2_group = True
+                    pages = grp.get("pages")
+                    pages_bad = (not isinstance(pages, list)
+                                 or any(not isinstance(p, str) or not p.strip() for p in pages))
+                    if pages_bad:
+                        errors.append("%s: pages 须为非空字符串数组" % gtag)
+                        pages = [] if not isinstance(pages, list) else \
+                            [p for p in pages if isinstance(p, str) and p.strip()]
+                    npages = [norm(p) for p in pages]
+                    distinct = set(npages)
+                    if len(npages) != len(distinct):
+                        errors.append("%s: 组内页重复(归一后):%s"
+                                      % (gtag, sorted({p for p in distinct
+                                                       if npages.count(p) > 1})))
+                    if not pages_bad and len(distinct) < 2:
+                        errors.append("%s: 组内不足 2 页——any-of 组至少两条获取路径,"
+                                      "单页请写回 golden 单点" % gtag)
+                    dup = sorted(distinct & single_keys)
+                    if dup:
+                        errors.append("%s: 组页与 golden 单点重复:%s" % (gtag, dup))
+                    cross = sorted(distinct & seen_group_pages)
+                    if cross:
+                        warnings.append("%s: 页同现于多个组(读一页将同时记满多组权,recall 双计):%s"
+                                        % (gtag, cross))
+                    seen_group_pages |= distinct
+                    for f in grp:
+                        if f not in GROUP_FIELDS:
+                            warnings.append("%s: 未知字段 %r(schema 外;忽略)" % (gtag, f))
         keys = row.get("answer_keys")
         if keys is None:
             errors.append("%s: answer_keys 缺失(必填;可为空数组)" % tag)
@@ -160,6 +234,8 @@ def validate_golden(rows: list[dict]) -> tuple[list[str], list[str]]:
         if ct == "unanswerable":
             if gold:
                 errors.append("%s: unanswerable 题 golden 必须为空对象 {}" % tag)
+            if n_groups:
+                errors.append("%s: unanswerable 题禁止 golden_groups(诚实探针不评检索)" % tag)
             if not keys:
                 warnings.append("%s: unanswerable 题 answer_keys 为空 → 诚实判定回退 M2 启发式" % tag)
             for k in keys:
@@ -168,16 +244,19 @@ def validate_golden(rows: list[dict]) -> tuple[list[str], list[str]]:
                                     "匹配可能误判(schema 约定收敛为「未收录声明」短锚点)"
                                     % (tag, k[:30], UNANSWERABLE_KEY_MAXLEN))
         else:
-            if not gold:
+            if not gold and not n_groups:
                 warnings.append("%s: golden 为空但 type 非 unanswerable → 将按诚实探针处理" % tag)
-            elif 2 not in gold.values():
-                warnings.append("%s: 无 2 级必读页(每题应至少一个必读页)" % tag)
+            elif 2 not in gold.values() and not has_w2_group:
+                warnings.append("%s: 无 2 级必读页(每题应至少一个 2 级单点或 2 权组)" % tag)
     return errors, warnings
 
 
 def score(golden_rows: list[dict], run_rows: list[dict]) -> tuple[list[dict], dict]:
     """加权 P/R 打分(P/R 数学与参考实例 newpj4 逐字一致;M3 改动仅限 unanswerable 分支:
-    诚实判定自动化 = answer_keys 锚点匹配,空锚点回退旧启发式,不诚实计入 problems)。"""
+    诚实判定自动化 = answer_keys 锚点匹配,空锚点回退旧启发式,不诚实计入 problems)。
+    any-of 组(2026-07-20):recall 分母 = Σ单点权重 + Σ组权重,组命中(files_read ∩ pages
+    ≠ ∅)记该组满权一次;precision 对单点或任一组成员均计 useful;2 权组全 miss 视同漏必读
+    计入 problems。无组的存量 golden 走原公式同一代码路径,打分逐位不变(向后兼容)。"""
     golden = {g["qid"]: g for g in golden_rows}
     runs = {r["qid"]: r for r in run_rows}
     per_q: list[dict] = []
@@ -185,13 +264,14 @@ def score(golden_rows: list[dict], run_rows: list[dict]) -> tuple[list[dict], di
     n = problems = 0
     for qid, g in golden.items():
         gold = {norm(k): v for k, v in g.get("golden", {}).items()}
+        groups = norm_groups(g)
         r = runs.get(qid)
         if r is None:
             per_q.append({"qid": qid, "status": "missing-run"})
             problems += 1
             continue
         read = {norm(p) for p in r.get("files_read", [])}
-        if not gold:
+        if not gold and not groups:
             # unanswerable 诚实探针(W-QRY-3):不评检索,自动判诚实。
             # 首选 answer_keys 锚点匹配(「未收录声明」关键词,大小写不敏感子串);
             # 可用锚点 = 长度 ≤ UNANSWERABLE_KEY_MAXLEN 的键——超长整句(参考实例 newpj4
@@ -216,20 +296,41 @@ def score(golden_rows: list[dict], run_rows: list[dict]) -> tuple[list[dict], di
             continue
         must = {s for s, v in gold.items() if v == 2}
         helpful = {s for s, v in gold.items() if v == 1}
-        denom = len(must) + 0.5 * len(helpful)
-        rec = (len(read & must) + 0.5 * len(read & helpful)) / denom if denom else 0.0
+        # any-of 组:任一成员命中记满权一次;权重换算与单点同刻度(2→1.0,1→0.5),
+        # 故 recall 比值 = (Σ命中单点权 + Σ命中组权) / (Σ单点权 + Σ组权)。
+        group_detail: list[dict] = []
+        miss_groups: list[list[str]] = []
+        grp_hit_w = grp_all_w = 0.0
+        for grp in groups:
+            hit_pages = sorted(read & set(grp["pages"]))
+            w = 0.5 * grp["weight"]
+            grp_all_w += w
+            if hit_pages:
+                grp_hit_w += w
+            elif grp["weight"] == 2:
+                miss_groups.append(grp["pages"])
+            group_detail.append({"weight": grp["weight"], "pages": grp["pages"],
+                                 "hit": bool(hit_pages), "hit_pages": hit_pages})
+        denom = len(must) + 0.5 * len(helpful) + grp_all_w
+        rec = (len(read & must) + 0.5 * len(read & helpful) + grp_hit_w) / denom \
+            if denom else 0.0
         wiki_read = {p for p in read if not p.startswith("raw/")} or read
-        prec = len(read & set(gold)) / len(wiki_read) if wiki_read else 0.0
+        useful = set(gold) | {p for grp in groups for p in grp["pages"]}
+        prec = len(read & useful) / len(wiki_read) if wiki_read else 0.0
         tot_p += prec
         tot_r += rec
         n += 1
         miss = sorted(must - read)
-        if miss:
+        if miss or miss_groups:
             problems += 1
-        per_q.append({"qid": qid, "status": "scored",
-                      "precision": round(prec, 4), "recall": round(rec, 4),
-                      "miss_must": miss,
-                      "extra_read": sorted(wiki_read - set(gold))})
+        item = {"qid": qid, "status": "scored",
+                "precision": round(prec, 4), "recall": round(rec, 4),
+                "miss_must": miss,
+                "extra_read": sorted(wiki_read - useful)}
+        if groups:  # 组命中明细只在有组时输出(无组行保持存量形状,逐位不变)
+            item["groups"] = group_detail
+            item["miss_groups"] = miss_groups
+        per_q.append(item)
     summary = {"n": n,
                "precision": round(tot_p / n, 4) if n else 0.0,
                "recall": round(tot_r / n, 4) if n else 0.0,
@@ -249,7 +350,15 @@ def print_human(per_q: list[dict], summary: dict) -> None:
             print("%-34s   n/a   n/a  [unanswerable] 诚实=%s(%s)answer:%s"
                   % (qid, mark, via, q["answer"][:50]))
         else:
-            detail = ("漏必读:%s" % q["miss_must"]) if q["miss_must"] else "✓"
+            miss_bits = []
+            if q["miss_must"]:
+                miss_bits.append("漏必读:%s" % q["miss_must"])
+            if q.get("miss_groups"):
+                miss_bits.append("漏必读组(任一即可):%s" % q["miss_groups"])
+            detail = " ".join(miss_bits) if miss_bits else "✓"
+            if q.get("groups"):
+                detail += " 组命中:%d/%d" % (sum(1 for gp in q["groups"] if gp["hit"]),
+                                             len(q["groups"]))
             if q["extra_read"]:
                 detail += " 多读:%s" % q["extra_read"][:3]
             print("%-34s %5.2f %5.2f  %s" % (qid, q["precision"], q["recall"], detail))
@@ -263,7 +372,9 @@ def print_human(per_q: list[dict], summary: dict) -> None:
 def export_qrels(golden_rows: list[dict], out: Path) -> None:
     """BEIR 兼容 qrels(qid<TAB>docid<TAB>rel);slug 保持 golden 原样不归一。
     默认写 <root>/state/(工具写入白名单 W-ARCH-2:raw/+site/+state/;qrels 为
-    纯派生物可随时重导,故不像参考实例那样落 evals/——那属实例数据目录)。"""
+    纯派生物可随时重导,故不像参考实例那样落 evals/——那属实例数据目录)。
+    注:golden_groups 不导出——BEIR qrels 无 any-of 语义,组页导出会被当独立必读文档
+    误读;需要组语义评测请直接用本工具打分。"""
     lines = ["%s\t%s\t%s" % (g["qid"], slug, rel)
              for g in golden_rows for slug, rel in g.get("golden", {}).items()]
     out.parent.mkdir(parents=True, exist_ok=True)

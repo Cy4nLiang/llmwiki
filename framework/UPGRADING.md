@@ -35,6 +35,26 @@
 
 ---
 
+## 1.1.0 — 2026-07-20(判级:MINOR)
+
+### 变更摘要
+golden any-of 组结算落地(修校准结构缺陷):schema 增 `golden_groups`(同一信息多条获取路径,
+任一命中记满组权),scorer/校验/文档同步,存量无组 golden 打分逐字节不变;新增跨组重复页
+warning 校验。CI 增 any-of 两态用例与 stub-ir 回退护栏(升级工具对旧版渲染器的兼容路径入长期
+回归),模拟版本号改由 VERSION 派生。wiki-init 补嵌套宿主多层契约边界注。
+
+### 迁移清单(1.0.0 实例 → 1.1.0)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| — | 评测扩展 | frozen 覆盖 tools/eval_retrieval.py 与 evals/{golden.schema.json,question-types.md};存量 golden 无需改动(打分不变),受 weight-1 替代路径压制 recall 的实例可按 question-types any-of 节改组并在 log 记校准修订 | frozen + instance 数据 |
+| — | skills 文案 | 三方合并自动采用(wiki-init 嵌套宿主注) | render-once |
+
+### frozen 覆盖清单
+tools/eval_retrieval.py、evals/golden.schema.json、evals/question-types.md。
+
+### 验收
+`python3 tests/run_ci.py` 全绿(134 断言);golden 门禁按新基线对照(参考实例 knowledge:R 0.633→0.958 为校准修订非能力变化,已 log 留痕)。
+
 ## 1.0.0 — 2026-07-20(判级:MINOR;首个稳定版)
 
 ### 变更摘要

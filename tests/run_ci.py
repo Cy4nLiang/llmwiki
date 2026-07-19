@@ -23,21 +23,32 @@
       peer 互引 lint 为 soft warning(W-XRF-1)不 fail;
   (g) eval_retrieval --check-golden:夹具 golden 零 error 零 warning(exit 0);
       现场造坏 golden(未知 type=warning + golden 非对象=结构错误)断言 exit 2;
+      any-of 组(golden_groups):现场造 2 题小 golden(1 题带 2 权组)+ 命中/未命中
+      两态 run——命中态断言 R=1.0/exit 0 与组明细(hit/hit_pages),未命中态断言
+      组题 R=0.5/漏必读组计 problem_q/exit 1,无组对照题输出形状不变;
+      再造坏组(组内单页 / 组页与单点重复)--check-golden 断言 exit 2;
+      hello-wiki 既有 golden 与 (e) 的 EXPECT_SUMMARY 不动;
   (h) 模拟升级一轮(M3 核心;Spec §10):tmp 内复制框架仓为 fw-next,改一个 frozen
-      工具(加注释行)+ 一个 render-once 模板(followups 加一行)+ bump 1.0.1 +
-      UPGRADING.md 顶插条目 + 重跑 gen_manifest;对 base 实例:
+      工具(加注释行)+ 一个 render-once 模板(followups 加一行)+ bump NEXT_V
+      (由当前 VERSION 按 semver patch+1 派生,不硬编码)+ UPGRADING.md 顶插条目 +
+      重跑 gen_manifest;对 base 实例:
       (h1) --dry-run 全树逐文件比对零写入,计划列出上述文件;
       (h2) 实跑:frozen 干净覆盖、未被实例改过的 render-once 自动采用新版、
-           VERSION==1.0.1、framework/base/ 与 MANIFEST 快照刷新、lint 门禁 rc=0、
+           VERSION==NEXT_V、framework/base/ 与 MANIFEST 快照刷新、lint 门禁 rc=0、
            wiki/log.md 新增 upgrade 条目(W-LOG-1);
       (h3) 冲突路(克隆实例):手改 render-once 再升级 → 原文件保留 +
            <file>.upgrade-new 生成 + exit 1;
       (h4) fork 路(克隆实例):手改 frozen 工具再升级 → 列 fork 候选未覆盖 + exit 1;
+      (h5) stub-ir 回退护栏:tmp 造剥离 compute_conds/stamp_dates/snapshot_manifest
+           的 stub init_render(拷真文件删三函数,模拟函数化前旧渲染器),importlib
+           驱动 upgrade.render_tree 走镜像回退路径,断言渲染产物与新路径(init_render
+           单源)逐字节等价;snapshot_manifest 镜像同法比对(upgrade.py 头注声明的
+           旧版回退设计,防两侧口径漂移);
   (i) extras 冒烟:serve.py 子进程起随机高位口 → GET /api/status 合法 JSON 且含
       pipelines 段 → 关停;i18n_link.py 未配置语言对 exit 2;
   (j) manual 哨兵:base sync status 不再出「未声明适配器」警告(guide adapter=manual),
       peers 段与 framework_version 进 status --json;mf 实例 peers[0](hub→base)
-      可达、pages.jsonl 非空、报版本 skew(base 已升 1.0.1)。
+      可达、pages.jsonl 非空、报版本 skew(base 已升 NEXT_V)。
 
 退出码:0 = 全部断言通过;1 = 任一断言失败(fail-fast,失败后保留 tmp 便于排查);
         2 = 用法/环境错误(夹具或框架文件缺失)。
@@ -47,6 +58,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -81,14 +93,21 @@ ZERO_ERROR_CHECKS = ("broken_links", "fm_required", "fm_drift", "map_budget",
 
 # ---- (h) 模拟升级一轮的常数 --------------------------------------------------
 CUR_V = (FW / "framework" / "VERSION").read_text().strip()   # 框架当前版本(升级起点)
-NEXT_V = "1.0.1"                                # fw-next bump 到的版本
+_CUR_M = re.match(r"^(\d+)\.(\d+)\.(\d+)$", CUR_V)
+if _CUR_M is None:                              # 常量区即时校验:VERSION 须为三段 semver
+    print("错误: framework/VERSION 不是三段语义版本:%r" % CUR_V, file=sys.stderr)
+    sys.exit(2)
+# fw-next bump 到的版本:CUR_V patch+1 派生(发版后免手改模拟版本号)
+NEXT_V = "%s.%s.%d" % (_CUR_M.group(1), _CUR_M.group(2), int(_CUR_M.group(3)) + 1)
 UPG_DATE = "2026-07-19"                         # 升级簿记日期(log 条目/UPGRADING 落款)
 FROZEN_TOUCH = "tools/build_index.py"           # ① fw-next 改动的 frozen 工具
-FROZEN_MARK = "# fw-next: upgrade smoke marker(hello-wiki CI 注入,1.0.1)"
+FROZEN_MARK = "# fw-next: upgrade smoke marker(hello-wiki CI 注入,%s)" % NEXT_V
 TPL_TOUCH = "templates/wiki/followups.md"       # ② fw-next 改动的 render-once 模板
-TPL_MARK = "- 升级冒烟标记:1.0.1 模板新增行(hello-wiki CI 注入;纯文本非 wikilink)。"
+TPL_MARK = "- 升级冒烟标记:%s 模板新增行(hello-wiki CI 注入;纯文本非 wikilink)。" % NEXT_V
 INST_MARK = "<!-- 实例手改:本地补充条目(hello-wiki CI 注入,h3 冲突路) -->"
 FORK_MARK = "# 实例本地改动:fork 候选(hello-wiki CI 注入,h4 fork 路)"
+# (h5) stub 剥离的三个单源函数(upgrade.py 头注:旧版渲染器缺它们时 hasattr 回退镜像)
+STRIP_FUNCS = ("compute_conds", "stamp_dates", "snapshot_manifest")
 UPGRADING_ENTRY = """## %s — %s(判级:PATCH)
 
 ### 变更摘要
@@ -458,9 +477,103 @@ def phase_golden_check(ci: CI, base: Path, tmp: Path) -> None:
              and any("未知 type" in w for w in rep.get("warnings", [])),
              json.dumps(rep, ensure_ascii=False)[:500])
 
+    # ---- any-of 组(golden_groups):命中/未命中两态打分 + 坏组结构错误 --------
+    # tmp 现场造 2 题小 golden(1 题带 2 权组 + 1 题无组对照);不动 hello-wiki
+    # 既有 golden 与 (e) 的 EXPECT_SUMMARY。页名借夹具 slug,打分为 ID-based 不查盘。
+    print("\n[base/g2] any-of 组:组命中/未命中两态 + 坏组 exit 2")
+    ag = tmp / "anyof-golden.jsonl"
+    ag.write_text(
+        '{"qid": "g1-group-anyof", "type": "single-hop", "question": "默认问候语?'
+        '(any-of 冒烟)", "golden": {"concepts/greeting-protocol": 2}, '
+        '"golden_groups": [{"weight": 2, "pages": ["syntheses/greeting-design-story", '
+        '"sources/2026-07-01-adr-greeting-default"]}], "answer_keys": ["你好,世界"]}\n'
+        '{"qid": "g2-plain-single", "type": "single-hop", "question": "ascii 档字符集'
+        '纪律?(无组对照)", "golden": {"concepts/localization-fallback": 2}, '
+        '"answer_keys": ["可打印 ASCII"]}\n',
+        encoding="utf-8")
+    agc = ci.run_json("check-golden any-of golden --json",
+                      [PY, ev, "--check-golden", ag, "--root", base, "--json"])
+    ci.check("any-of golden:合法组零 error 零 warning",
+             agc.get("ok") is True and agc.get("errors") == []
+             and agc.get("warnings") == [] and agc.get("n_questions") == 2,
+             json.dumps(agc, ensure_ascii=False)[:500])
+
+    run_hit = tmp / "anyof-run-hit.jsonl"       # 组命中态:单点 + 组内一页(ADR 路径)
+    run_hit.write_text(
+        '{"qid": "g1-group-anyof", "files_read": ["concepts/greeting-protocol", '
+        '"sources/2026-07-01-adr-greeting-default"], "answer": "你好,世界"}\n'
+        '{"qid": "g2-plain-single", "files_read": ["concepts/localization-fallback"], '
+        '"answer": "只允许可打印 ASCII"}\n', encoding="utf-8")
+    ev_hit = ci.run_json("any-of 组命中态打分 --json",
+                         [PY, ev, run_hit, "--root", base, "--golden", ag, "--json"])
+    ci.check("组命中态 summary == {n:2, P:1.0, R:1.0, problem_q:0}(组满权,exit 0)",
+             ev_hit.get("summary") == {"n": 2, "precision": 1.0, "recall": 1.0,
+                                       "problem_q": 0},
+             json.dumps(ev_hit.get("summary"), ensure_ascii=False))
+    qh = {x["qid"]: x for x in ev_hit.get("per_question", [])}
+    g1 = qh["g1-group-anyof"]
+    ci.check("组命中明细:groups[0] hit=true / hit_pages=[ADR 页] / miss_groups=[]",
+             g1.get("groups") and g1["groups"][0]["hit"] is True
+             and g1["groups"][0]["hit_pages"] == ["sources/2026-07-01-adr-greeting-default"]
+             and g1.get("miss_groups") == [],
+             json.dumps(g1, ensure_ascii=False)[:400])
+    ci.check("无组对照题输出形状不变(无 groups/miss_groups 键)",
+             "groups" not in qh["g2-plain-single"]
+             and "miss_groups" not in qh["g2-plain-single"],
+             json.dumps(qh["g2-plain-single"], ensure_ascii=False)[:300])
+
+    run_miss = tmp / "anyof-run-miss.jsonl"     # 组未命中态:只读单点,组两页全 miss
+    run_miss.write_text(
+        '{"qid": "g1-group-anyof", "files_read": ["concepts/greeting-protocol"], '
+        '"answer": "你好,世界"}\n'
+        '{"qid": "g2-plain-single", "files_read": ["concepts/localization-fallback"], '
+        '"answer": "只允许可打印 ASCII"}\n', encoding="utf-8")
+    rc, out, err = ci.run([PY, ev, run_miss, "--root", base, "--golden", ag, "--json"])
+    ci.check("组未命中态(2 权组全 miss 视同漏必读)→ exit 1", rc == 1,
+             "rc=%s\nstdout(tail): %s\nstderr(tail): %s" % (rc, out[-400:], err[-400:]))
+    ev_miss = json.loads(out)
+    ci.check("组未命中态 summary == {n:2, P:1.0, R:0.75, problem_q:1}"
+             "(组权进分母:g1 R=0.5)",
+             ev_miss.get("summary") == {"n": 2, "precision": 1.0, "recall": 0.75,
+                                        "problem_q": 1},
+             json.dumps(ev_miss.get("summary"), ensure_ascii=False))
+    qm = {x["qid"]: x for x in ev_miss.get("per_question", [])}
+    m1 = qm["g1-group-anyof"]
+    ci.check("组未命中明细:g1 R=0.5、groups[0] hit=false、miss_groups 恰 1 组",
+             m1["recall"] == 0.5 and m1["groups"][0]["hit"] is False
+             and m1["groups"][0]["hit_pages"] == []
+             and len(m1.get("miss_groups", [])) == 1
+             and set(m1["miss_groups"][0]) == {"syntheses/greeting-design-story",
+                                               "sources/2026-07-01-adr-greeting-default"},
+             json.dumps(m1, ensure_ascii=False)[:500])
+
+    badg = tmp / "anyof-bad-golden.jsonl"       # 坏组:组内单页 / 组页与单点重复(归一后)
+    badg.write_text(
+        '{"qid": "b1-single-page-group", "type": "single-hop", "question": "坏组一?", '
+        '"golden": {"concepts/greeting-protocol": 2}, '
+        '"golden_groups": [{"weight": 2, "pages": ["syntheses/greeting-design-story"]}], '
+        '"answer_keys": ["x"]}\n'
+        '{"qid": "b2-dup-with-single", "type": "single-hop", "question": "坏组二?", '
+        '"golden": {"concepts/greeting-protocol": 2}, '
+        '"golden_groups": [{"weight": 1, "pages": ["wiki/concepts/greeting-protocol.md", '
+        '"syntheses/greeting-design-story"]}], "answer_keys": ["y"]}\n',
+        encoding="utf-8")
+    rc, out, err = ci.run([PY, ev, "--check-golden", badg, "--root", base, "--json"])
+    ci.check("坏组(组内单页 + 组页与单点重复)→ exit 2", rc == 2,
+             "rc=%s\nstdout(tail): %s\nstderr(tail): %s" % (rc, out[-400:], err[-400:]))
+    try:
+        brep = json.loads(out)
+    except json.JSONDecodeError:
+        brep = {}
+    ci.check("坏组报告:恰 2 结构错误(不足 2 页 / 与单点重复,归一后判定)",
+             brep.get("ok") is False and len(brep.get("errors", [])) == 2
+             and any("不足 2 页" in e for e in brep.get("errors", []))
+             and any("与 golden 单点重复" in e for e in brep.get("errors", [])),
+             json.dumps(brep, ensure_ascii=False)[:600])
+
 
 def build_fw_next(ci: CI, tmp: Path) -> Path:
-    """(h0) tmp 内复制框架仓为 fw-next 并造 1.0.1 版:frozen 工具加注释行、
+    """(h0) tmp 内复制框架仓为 fw-next 并造 NEXT_V 版:frozen 工具加注释行、
     followups 模板加一行、VERSION bump、UPGRADING.md 顶插条目、重跑 gen_manifest。"""
     print("\n[h0] fw-next 造版:frozen+模板各一处改动 → %s + UPGRADING + gen_manifest" % NEXT_V)
     fwn = tmp / "fw-next"
@@ -476,7 +589,7 @@ def build_fw_next(ci: CI, tmp: Path) -> Path:
                   encoding="utf-8")
 
     (fwn / "framework" / "VERSION").write_text(NEXT_V + "\n", encoding="utf-8")
-    upg = fwn / "framework" / "UPGRADING.md"   # ③ 条目区顶部插入 1.0.1 条目(新→旧)
+    upg = fwn / "framework" / "UPGRADING.md"   # ③ 条目区顶部插入 NEXT_V 条目(新→旧)
     utxt = upg.read_text(encoding="utf-8")
     m = re.search(r"(?m)^## \d+\.\d+\.\d+", utxt)
     ci.check("fw-next UPGRADING.md 找到条目区插入点(首个版本条目)", m is not None,
@@ -587,7 +700,84 @@ def phase_upgrade(ci: CI, tmp: Path, base: Path) -> Path:
     t4 = f4.read_text(encoding="utf-8")
     ci.check("fork 候选未被覆盖(本地改动在、fw-next 注释行不在)",
              FORK_MARK in t4 and FROZEN_MARK not in t4, t4[-300:])
+
+    phase_stub_fallback(ci, tmp, base)             # (h5)
     return fwn
+
+
+def _import_module(py_path: Path, name: str):
+    """importlib 按独立名加载模块(与 upgrade.py._load_module 同法,CI 侧自持)。"""
+    spec = importlib.util.spec_from_file_location(name, str(py_path))
+    if spec is None or spec.loader is None:
+        raise RuntimeError("无法加载模块:%s" % py_path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def make_stub_ir(tmp: Path) -> Path:
+    """(h5) 造 stub 渲染器:整拷 tools/ 树后把 init_render.py 剥离 STRIP_FUNCS 三个
+    模块级函数,模拟「函数化前的旧版渲染器」——upgrade.render_tree 对其 hasattr 探测
+    失败,必然走本文件镜像(_compute_conds/_stamp_dates/_snapshot_manifest)回退路径。
+    整拷 tools/ 是必要的:compute_slots 按 __file__ 同目录探测姊妹工具存在性
+    (缺席会给 tools.cmds 追加「待交付」后缀),裸拷单文件会引入与剥函数无关的渲染差异。"""
+    stub_tools = tmp / "stub-ir" / "tools"
+    if not stub_tools.exists():
+        shutil.copytree(str(FW / "tools"), str(stub_tools),
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    src = (FW / "tools" / "init_render.py").read_text(encoding="utf-8")
+    out, skip = [], False
+    for ln in src.splitlines(keepends=True):
+        if skip:
+            if ln.strip() and not ln[0].isspace():
+                skip = False                       # 回到顶层非空行 = 函数体结束,本行继续判定
+            else:
+                continue
+        m = re.match(r"def (\w+)\(", ln)
+        if m and m.group(1) in STRIP_FUNCS:
+            skip = True
+            continue
+        out.append(ln)
+    stub = stub_tools / "init_render.py"
+    stub.write_text("".join(out), encoding="utf-8")
+    return stub
+
+
+def phase_stub_fallback(ci: CI, tmp: Path, base: Path) -> None:
+    """(h5) stub-ir 回退护栏(M3 验证员建议的长期护栏):upgrade.py 头注声明——旧版
+    渲染器缺 compute_conds/stamp_dates/snapshot_manifest 时回退本文件镜像,口径钉死。
+    此处以剥离三函数的 stub 驱动回退路径,与新路径(init_render 单源)逐字节比对,
+    任何一侧口径漂移都会在此现形。"""
+    print("\n[h5] stub-ir 回退护栏:剥离 %s → 镜像回退与单源新路径逐字节等价"
+          % "/".join(STRIP_FUNCS))
+    upg = _import_module(FW / "tools" / "upgrade.py", "_ci_upgrade")
+    ir_real = _import_module(FW / "tools" / "init_render.py", "_ci_ir_real")
+    ir_stub = _import_module(make_stub_ir(tmp), "_ci_ir_stub")
+    ci.check("stub 三函数确已剥离且真渲染器齐备(回退路径必然触发)",
+             all(not hasattr(ir_stub, f) for f in STRIP_FUNCS)
+             and all(hasattr(ir_real, f) for f in STRIP_FUNCS),
+             "stub 残留:%s;real 缺失:%s"
+             % ([f for f in STRIP_FUNCS if hasattr(ir_stub, f)],
+                [f for f in STRIP_FUNCS if not hasattr(ir_real, f)]))
+    fmmod = _import_module(FW / "tools" / "lib" / "fm.py", "_ci_fm")
+    cfg = fmmod.load_config(base, on_warning=lambda w: None)
+    out_new, _ = upg.render_tree(ir_real, FW, cfg, CUR_V, DATE)   # 新路径(单源函数)
+    out_old, _ = upg.render_tree(ir_stub, FW, cfg, CUR_V, DATE)   # 回退路径(镜像)
+    ci.check("stub 渲染非空且覆盖 CLAUDE.md 与 wiki/log.md(%d 文件)" % len(out_old),
+             len(out_old) >= 10 and "CLAUDE.md" in out_old and "wiki/log.md" in out_old,
+             "keys(head): %s" % sorted(out_old)[:10])
+    diff = sorted(set(out_new) ^ set(out_old)) + \
+        sorted(k for k in out_new if k in out_old and out_new[k] != out_old[k])
+    ci.check("render_tree 回退路径与新路径产物逐字节等价", not diff,
+             "差异文件:%s" % diff[:10])
+    mfp = FW / "framework" / "MANIFEST.json"
+    new_doc = json.loads(mfp.read_text(encoding="utf-8"))
+    snap_new = ir_real.snapshot_manifest(mfp, base)               # 新路径(单源函数)
+    snap_old = upg._snapshot_manifest(new_doc, base)              # 回退路径(镜像)
+    ci.check("snapshot_manifest 镜像回退与单源逐字节等价",
+             snap_new is not None and snap_new == snap_old,
+             "new(head): %r\nold(head): %r" % (str(snap_new)[:200], str(snap_old)[:200]))
 
 
 def phase_extras(ci: CI, base: Path) -> None:

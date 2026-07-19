@@ -1,5 +1,5 @@
 <!--
-llmwiki 契约模板 · framework 1.0.0 · 归属:render-once
+llmwiki 契约模板 · framework 1.1.0 · 归属:render-once
 init 渲染一次后本文件归实例所有,可随实例演化(见 [演化](#co-evolution));升级走 base × 现文件 × 新模板三方合并。
 实例私有条款一律写入文末〈实例扩展附录〉(lint 豁免区),不动其余骨架——这是三方合并永不冲突的前提。
 渲染约束:槽位由 wiki.config.json 经 init_render.py 确定性填充(agent 只填值,不写正文);渲染产物硬预算 ≤220 行(lint 校验)。

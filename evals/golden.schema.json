@@ -2,7 +2,7 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "llmwiki/evals/golden.schema.json",
  "title": "llmwiki golden 评测题(evals/golden.jsonl 每行一条)",
- "description": "golden 回归集单题的规范 Schema(M3,2026-07-19)。容器为 JSONL:每行一个独立 JSON 对象,本 Schema 描述其中一行。分级语义:golden 值 2 = 必读页(缺了答案不完整,进 recall 分母),1 = 有帮助页(读到加分,权重为 2 级页一半)。unanswerable 诚实探针:golden 必须为空对象 {},answer_keys 收敛为『未收录声明』锚点关键词(如 \"未收录\"、\"not covered\",建议 ≤20 字符)——打分器以锚点子串匹配判诚实,消除 M2 遗留的粗启发式误判;answer_keys 为空时打分器回退旧启发式并标注。机检执行口径(tools/eval_retrieval.py 手写校验,非通用 JSON Schema 引擎):结构错误(缺必填/类型不符/golden 值非 1|2/unanswerable 带非空 golden)→ exit 2;未知 type 经 x-alias-map 映射后仍未知 → warning 不阻断;未知字段 → warning 不阻断。校验入口:python3 tools/eval_retrieval.py --check-golden evals/golden.jsonl --root <实例根>。",
+ "description": "golden 回归集单题的规范 Schema(M3,2026-07-19;any-of 组扩展,2026-07-20)。容器为 JSONL:每行一个独立 JSON 对象,本 Schema 描述其中一行。分级语义:golden 值 2 = 必读页(缺了答案不完整,进 recall 分母),1 = 有帮助页(读到加分,权重为 2 级页一半)。any-of 组(golden_groups,可选):组语义 =『同一信息的多条获取路径,任一命中即满』——files_read ∩ 组 pages ≠ ∅ 记该组满权一次;recall 分母 = Σ golden 单点权重 + Σ 组权重;precision:golden 单点或任一组成员均计 useful。unanswerable 诚实探针:golden 必须为空对象 {} 且禁止有组,answer_keys 收敛为『未收录声明』锚点关键词(如 \"未收录\"、\"not covered\",建议 ≤20 字符)——打分器以锚点子串匹配判诚实,消除 M2 遗留的粗启发式误判;answer_keys 为空时打分器回退旧启发式并标注。机检执行口径(tools/eval_retrieval.py 手写校验,非通用 JSON Schema 引擎):结构错误(缺必填/类型不符/golden 值非 1|2/unanswerable 带非空 golden 或非空 golden_groups/组约束违规:weight 非 2|1、组内不足 2 页、组内页重复、组页与 golden 单点重复)→ exit 2;未知 type 经 x-alias-map 映射后仍未知 → warning 不阻断;未知字段 → warning 不阻断。校验入口:python3 tools/eval_retrieval.py --check-golden evals/golden.jsonl --root <实例根>。",
  "type": "object",
  "required": [
   "qid",
@@ -39,7 +39,7 @@
   },
   "golden": {
    "type": "object",
-   "description": "命中集:键 = wiki 相对路径或 raw/ 路径(打分时 'wiki/' 前缀与 '.md' 后缀归一等价,raw/ 路径保留原样),值 = 2(必读)| 1(有帮助)。非 unanswerable 题至少一页,且应含至少一个 2 级页(机检为 warning);exact-verbatim 题必须含 raw 文件本身(W-QRY-1);unanswerable 题必须为空对象 {}。",
+   "description": "命中集(单点):键 = wiki 相对路径或 raw/ 路径(打分时 'wiki/' 前缀与 '.md' 后缀归一等价,raw/ 路径保留原样),值 = 2(必读)| 1(有帮助)。非 unanswerable 题:单点 ∪ golden_groups 合计至少一页,且应含至少一个 2 级单点或 2 权组(机检为 warning);exact-verbatim 题必须含 raw 文件本身(W-QRY-1);unanswerable 题必须为空对象 {}。",
    "propertyNames": {
     "pattern": "^\\S+$"
    },
@@ -48,6 +48,38 @@
      1,
      2
     ]
+   }
+  },
+  "golden_groups": {
+   "type": "array",
+   "description": "any-of 组(可选):每组 =『同一信息的多条获取路径』,files_read ∩ pages ≠ ∅ 即记该组满权一次(任一命中即满)。打分口径:recall 分母 = Σ golden 单点权重 + Σ 组权重;precision 分子对 golden 单点或任一组成员均计 useful。组约束(违规 = 结构错误 exit 2):weight ∈ 2|1;pages 归一后 ≥2 页且互不重复;组页不得与 golden 单点重复;unanswerable 题禁止有组。用法:『同一信息的枢纽页 vs 替代/下钻路径』收进一组(组权取被并单点的最高权,原单点删除);确属『必须额外读』的页仍留 golden 单点。",
+   "items": {
+    "type": "object",
+    "required": [
+     "weight",
+     "pages"
+    ],
+    "additionalProperties": false,
+    "properties": {
+     "weight": {
+      "enum": [
+       2,
+       1
+      ],
+      "description": "组权(语义同单点:2 = 必读〔任一路径〕,1 = 有帮助〔任一路径〕);合并既有单点入组时取其中最高权。"
+     },
+     "pages": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {
+       "type": "string",
+       "minLength": 1,
+       "pattern": "^\\S+$"
+      },
+      "description": "同一信息的等价获取路径(写法与 golden 键一致:wiki 相对路径或 raw/ 路径,归一规则相同)。归一后 ≥2 页、互不重复、不与 golden 单点重复——单页无『任一』可言,应写回 golden 单点。"
+     }
+    }
    }
   },
   "answer_keys": {
@@ -80,6 +112,9 @@
      "golden": {
       "maxProperties": 0
      },
+     "golden_groups": {
+      "maxItems": 0
+     },
      "answer_keys": {
       "items": {
        "type": "string",
@@ -90,11 +125,25 @@
     }
    },
    "else": {
-    "properties": {
-     "golden": {
-      "minProperties": 1
+    "anyOf": [
+     {
+      "properties": {
+       "golden": {
+        "minProperties": 1
+       }
+      }
+     },
+     {
+      "required": [
+       "golden_groups"
+      ],
+      "properties": {
+       "golden_groups": {
+        "minItems": 1
+       }
+      }
      }
-    }
+    ]
    }
   }
  ],

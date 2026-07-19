@@ -1,4 +1,4 @@
-# golden 题型手册 — 8 题型逐型出题要点(M3,2026-07-19)
+# golden 题型手册 — 8 题型逐型出题要点(M3,2026-07-19;any-of 组正式化,2026-07-20)
 
 > 与 `evals/golden.schema.json`(结构规范)、`evals/playbook.md`(执行手册)构成评测三件套。
 > 单题结构、分级语义(2=必读 / 1=有帮助)、别名映射表以 schema 为准;本文只管**怎么出好题**。
@@ -133,18 +133,68 @@
  "notes": "回归 _map『操作类需求→queries 直达』行 + 该页 description 触发质量"}
 ```
 
-## any-of 校准坑
+## any-of 组(`golden_groups`)—— 多路径等价的正式语法
 
-多页能**独立**支撑同一答案时,单一 2 级页会产生 recall 假阴性:agent 经替代页答对却被判「漏必读」。
-参考实例 newpj4 实测:一道多跳题(q12)agent 经 entities 枢纽页单页答全且正确,golden v0.1 只认
-introducing 源页路径——当时记为「golden 校准过窄,非 agent 失败」,v0.2 以 any-of 修正。
+多页能**独立**支撑同一答案时,单一 2 级页会产生 recall 假阴性:agent 经替代页答对却被判「漏必读」;
+把替代页记 1 级单点也只是缓解——1 级仍进 recall 分母,「一页即止」的最优检索(P 1.0、答案全对)
+数学上限被压到 0.4–0.667(参考实例 newpj4 与 llmwiki dogfood 实例两轮实测同一结论)。
+2026-07-20 起打分器原生支持 **any-of 组**,旧「枢纽页记 2 + 替代页记 1」的近似编码就此退役。
 
-当前打分器(eval_retrieval.py)为扁平加权 P/R,**无原生 any-of 组字段**;校准用近似编码:
+**语法**(结构规范见 `golden.schema.json` 的 `golden_groups` 定义):
 
-1. **有枢纽页**(无论走哪条路径都该经过的页):枢纽页记 2,各替代页记 1——替代路径命中拿加分,不判漏读;
-2. **无枢纽页**(纯多路径等价):挑最正统一页记 2、其余等价页记 1,`notes` 写明 any-of 语义;复跑时
-   凡「答案对 + 命中任一等价页 + 漏必读告警」按 notes 人工豁免,并考虑把 2 级下放给实际最常命中的页;
-3. 每次复跑后逐题看 run 的 files_read + answer:凡「答案对、路径不同」一律回查是否该进 any-of。
+```json
+"golden_groups": [{"weight": 2, "pages": ["页A", "页B", ...]}, ...]
+```
+
+**语义**:一组 =「同一信息的多条获取路径」,`files_read ∩ pages ≠ ∅` 即记该组**满权一次**
+(任一命中即满,多命中不重复计)。打分口径:
+
+- recall 分母 = Σ golden 单点权重 + Σ 组权重;组命中计满组权,组全 miss 计 0;
+- precision:golden 单点或**任一组成员**均计 useful(读组内任何一页都不算「多读」);
+- 2 权组全 miss 视同漏必读(计入 problem_q → exit 1);1 权组全 miss 只降 recall 不报警;
+- per_question 输出带 `groups`(逐组 hit / hit_pages 明细)与 `miss_groups`。
+
+**硬约束**(违规 = 结构错误,`--check-golden` exit 2):weight ∈ 2|1;组内路径归一后 ≥2 页且
+互不重复;组页不得与 golden 单点重复;unanswerable 题禁止有组。
+
+**校准手法**:「同一信息的枢纽页 vs 替代/下钻路径」整簇收进一组,组权取被并单点的最高权,
+原单点删除;确属「必须额外读」的页(如 exact-verbatim 的 raw 文件本身,W-QRY-1)**仍留单点**,
+绝不混进组——进了组就意味着「读了替代页可以不读它」。
+
+**正例**(默认问候语可从 concept 页或 ADR 源页任一获得;raw 必读留单点):
+
+```json
+{"qid": "q-anyof-good", "type": "single-hop",
+ "question": "hello-wiki 的默认问候语是什么?",
+ "golden": {},
+ "golden_groups": [{"weight": 2,
+   "pages": ["concepts/greeting-protocol", "sources/2026-07-01-adr-greeting-default"]}],
+ "answer_keys": ["你好,世界"],
+ "notes": "any-of:concept 枢纽页与 ADR 源页为同一信息的两条路径,任一命中即满"}
+```
+
+**反例**(每条都是 `--check-golden` 的结构错误):
+
+```json
+{"golden_groups": [{"weight": 2, "pages": ["concepts/greeting-protocol"]}]}
+```
+组内单页——无「任一」可言,应写回 golden 单点。
+
+```json
+{"golden": {"concepts/greeting-protocol": 2},
+ "golden_groups": [{"weight": 1,
+   "pages": ["wiki/concepts/greeting-protocol.md", "syntheses/greeting-design-story"]}]}
+```
+组页与单点重复(路径归一后判定,加 `wiki/` 前缀 / `.md` 后缀也逃不掉)——同一页不能既是
+「必须读」又是「任一即可」。
+
+```json
+{"type": "unanswerable", "golden": {}, "golden_groups": [{"weight": 1, "pages": ["a", "b"]}]}
+```
+unanswerable 禁组——诚实探针不评检索。
+
+**复跑纪律**(不变):每次复跑逐题看 files_read + answer,凡「答案对、路径不同」回查是否该进
+any-of 组;方向单行道见下节。
 
 ## 「答错不修 golden」原则(改分单行道)
 
