@@ -25,7 +25,7 @@ import re
 import sys
 from pathlib import Path
 
-EXCLUDE_DIR_NAMES = {".git", "__pycache__", "node_modules", "state", ".claude/worktrees"}
+EXCLUDE_DIR_NAMES = {".git", "__pycache__", "node_modules", "state", "tests", ".claude/worktrees"}
 EXCLUDE_FILE_NAMES = {".DS_Store"}
 EXCLUDE_SUFFIXES = {".pyc"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

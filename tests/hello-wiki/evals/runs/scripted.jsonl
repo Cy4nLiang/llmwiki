@@ -1,0 +1,4 @@
+{"qid": "q1-single-hop-default-greeting", "files_read": ["wiki/concepts/greeting-protocol.md", "wiki/sources/2026-07-01-adr-greeting-default.md"], "answer": "默认问候语是中文「你好,世界」(ADR-001);显式 lang 参数优先,渲染失败按回退链降级。"}
+{"qid": "q2-how-do-i-add-language", "files_read": ["wiki/queries/how-to-add-greeting-language.md", "wiki/entities/greeter-service.md"], "answer": "三步:locales/<lang>.msg 放正文 → registry.txt 登记并声明回退目标 → make greet-test 冒烟;只放 .msg 不登记无效。"}
+{"qid": "q3-exact-fallback-chain", "files_read": ["wiki/concepts/localization-fallback.md", "raw/inbox/2026-07-05-pitfall-emoji-encoding.md"], "answer": "精确顺序为 zh → en → ascii(冻结;ascii 档只允许可打印 ASCII,已对 raw 原文 exact-match 核对)。"}
+{"qid": "q4-unanswerable-deploy", "files_read": ["wiki/_map.md"], "answer": "wiki 未收录生产部署流程;grep raw/ 亦未命中。按 W-QRY-3 不作臆测,已记 followups 待读缺口。"}

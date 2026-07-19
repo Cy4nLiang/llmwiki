@@ -35,6 +35,27 @@
 
 ---
 
+## 0.2.0 — 2026-07-19(判级:MINOR)
+
+### 变更摘要
+M2 工具层落位:sync 管线编排、build_site/build_index 派生索引、全量 lint_wiki(新增 --manifest)、
+eval 双件、lib/fm.py 单源库、fetcher 契约(adapters/CONTRACT.md + skeleton×2 + local_notes)、
+docs/{bulk-ingest,rolling-source,fetcher-contract}、hello-wiki CI 夹具(tests/run_ci.py,79 断言)。
+
+### 迁移清单(0.1.0 实例 → 0.2.0)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| W-UPG-1 | 新增机制 | 重渲染/覆盖 tools/(frozen 整体覆盖;实例改过工具先按 fork 处理)+ 落新 framework/MANIFEST.json 快照 | frozen |
+| W-IDX-1 | 新增工具 | 首跑 `python3 tools/build_site.py && python3 tools/build_index.py` 建立派生索引 | instance 产物 |
+| W-LNT-3 等 | lint 扩容 | 跑全量 `lint_wiki.py`,按报告清欠(staleness/light 占比等新检查) | — |
+| — | 模板修订 | render-once 三方合并:wiki-sync/wiki-lint skill 去「M1 注」、rolling 判新统一 `rolling_digest` 口径、overview 注释示例链接反引号化、source-page 滚动源块补 digest 字段 | render-once |
+
+### frozen 覆盖清单
+tools/*(全部)、adapters/CONTRACT.md、docs/ 三件——W-UPG-1 fork 二选一(覆盖或显式 fork)。
+
+### 验收
+`python3 tests/run_ci.py` 全绿(框架仓);实例侧 `lint_wiki.py --manifest` 零漂移 + golden 不回退(W-UPG-2;实例无 golden 时以全量 lint 代)。
+
 ## 0.1.0 — 2026-07-19(判级:首版,无迁移)
 
 M1 骨架首发,此前无实例存在,无迁移动作;本条仅立基线:

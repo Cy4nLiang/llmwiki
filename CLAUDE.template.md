@@ -37,7 +37,7 @@ Do not re-derive knowledge on every query — read the wiki, update the wiki, bu
 ## 硬规则 / Hard rules
 <a id="rules-hard"></a>
 1. (W-ARCH-1) **NEVER** 修改/删除/重命名 `raw/` 内文件——they are the source of truth;raw 与 wiki 冲突时 raw wins,更新 wiki。
-2. (W-ARCH-2) 两类写入者:工具只写 `raw/` + `site/` + `state/`;你只写 `wiki/`。
+2. (W-ARCH-2) 两类写入者:工具只写 `raw/` + `site/` + `state/`(例外:重建 wiki 内派生物 `index*.md`/`contradictions.md`,W-IDX-1);你只写 `wiki/`。
 3. (W-ARCH-3) 根命名空间白名单(以 [三层架构](#arch) 为准);杂物入 `_attic/`。
 4. <SLOT:lang.clause>
 5. (W-PAGE-3) 跨页引用一律 `[[wikilink]]`(`[[slug]]` 或 `[[path/to/slug|display]]`);库外文件用反引号纯文本,不用 wikilink。

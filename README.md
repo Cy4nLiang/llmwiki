@@ -23,7 +23,7 @@ llmwiki 把「AI 维护的复利型知识库」协议层从参考实例(newpj4,6
 相对「一份 CLAUDE.md 模板」类方案,llmwiki 的差异化在三件事同时发货:
 
 1. **协议**——契约模板(19 槽位 + 命名锚点 + 26 条 `W-*` 规则 ID,见 `framework/RULES.md`)、`_map` 五段路由页、五类页面类型学与冻结骨架、纠偏区机制(exact-match 裁决推翻参数记忆的事实域显式登记,强制后续会话弃训练记忆——RAG 与向量检索都没有这个器官)。每条款背后有参考实例的评测数字与修正案例。
-2. **工具**——仅 Python 标准库的确定性工具链:`init_render.py`(agent 只填值,渲染交工具,两次渲染逐字节相同)、`lint_wiki.py`(机械体检)、`gen_manifest.py`(归属与 hash 派生);M2 起补齐 sync / build_index / build_site / eval×2 与 fetcher 契约。
+2. **工具**——仅 Python 标准库的确定性工具链:`init_render.py`(agent 只填值,渲染交工具,两次渲染逐字节相同)、`sync.py`(管线编排+pending 持久重算)、`build_site.py`/`build_index.py`(派生索引,W-IDX-1)、`lint_wiki.py`(全量机械体检+`--manifest` frozen 校验)、`eval_retrieval.py`/`eval_compare.py`(零 LLM 评测)、`lib/fm.py`(frontmatter/est_tokens/wikilink 单源)、`gen_manifest.py`;fetcher 契约见 `adapters/CONTRACT.md`。
 3. **评测**——golden schema + 6+1 题型(single-hop / multi-hop / comparison / aggregation / timeline / exact-verbatim + unanswerable 诚实探针 + 路由入口选择题)+ 零 LLM 打分器 + 成本客观重算。实例只写题目,就能回归验证自己的协议改动与模型选型。
 
 ## 快速开始
@@ -37,7 +37,7 @@ llmwiki 把「AI 维护的复利型知识库」协议层从参考实例(newpj4,6
 2. **实例化**:在 Claude Code 会话内触发 `/wiki-init`(skill 未触发时直接 Read `.claude/skills/wiki-init/SKILL.md`)。三模式:greenfield(全新)/ adopt(收编存量仓库,绝不覆盖已有文件)/ embedded(渲染进宿主子目录 `knowledge/`,宿主 CLAUDE.md 只追加指针段)。十问收集 domain 取值 → 写 `wiki.config.json` → `python3 tools/init_render.py` 确定性渲染 → `python3 tools/lint_wiki.py --check-slots` 冒烟(零槽位残留)。
 3. **首次 ingest**:把第一篇源材料放进 `raw/`(或按捕获协议投递 `raw/inbox/<date>-<slug>.md`),对 agent 说「ingest 这篇」——走 wiki-ingest 七步流,产出七段骨架源页并 touch 聚合页(W-ING-1:full ≥5 / light ≥1),这一步是复利闭环的起点,绝不退化成剪藏。
 
-> 当前为 M1 骨架版:采集管线(sync / adapters)尚未落位,首次内容走手工投递 `raw/`;工具补齐进度见下方里程碑。
+> 当前为 M2 工具版:全套工具链与 fetcher 契约已落位;内生知识(inbox)开箱即用,外源管线从 `adapters/*.skeleton.py` 按契约自行实现。评测题型 schema 与升级工具见 M3。
 
 ## 目录导览
 
@@ -65,7 +65,7 @@ llmwiki/
 │   ├── init_render.py               确定性渲染器(/wiki-init 的执行引擎)
 │   ├── lint_wiki.py                 机械体检(--check-slots / --check-config)
 │   └── gen_manifest.py              MANIFEST 派生
-└── adapters/ docs/ evals/ extras/ tests/hello-wiki/     ← M2/M3 落位,见里程碑
+└── adapters/(CONTRACT+skeleton×2+local_notes) docs/ tests/hello-wiki/(CI 夹具)   evals/ extras/ ← M3
 ```
 
 ## 实例定位声明:单人 + agent,团队并发出界
@@ -84,8 +84,8 @@ llmwiki/
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| M1 骨架 | 契约挖空+锚点化+规则 ID、rules/meta/skills 模板、config schema、init_render + /wiki-init、lint --check-slots | **完成**(v0.1.0,本仓库现状) |
-| M2 工具 | 7 件工具去 domain 化 + lib/fm.py、fetcher 契约、local_notes/inbox、hello-wiki 夹具 CI | 进行中 |
+| M1 骨架 | 契约挖空+锚点化+规则 ID、rules/meta/skills 模板、config schema、init_render + /wiki-init、lint --check-slots | **完成**(v0.1.0) |
+| M2 工具 | 7 件工具去 domain 化 + lib/fm.py、fetcher 契约、local_notes/inbox、hello-wiki 夹具 CI(79 断言) | **完成**(v0.2.0) |
 | M3 质量 | 评测打包(题型/playbook/路由入口题)、升级协议(MANIFEST hash 常跑/三方合并)、跨实例引用(W-XRF-1)、extras、安全默认 | 进行中 |
 | M4 发布 | 真实代码项目 dogfood + 发布工程(公开仓库、贡献指南)→ v1.0.0 | 进行中 |
 

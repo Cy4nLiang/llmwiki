@@ -1,0 +1,62 @@
+{
+  "$schema": "schema/wiki.config.schema.json",
+  "framework_version": "0.1.0",
+  "domain": {
+    "name": "hello-wiki",
+    "description": "hello-wiki 示例项目知识库(CI 合成夹具):一个虚构问候服务 greeter 的 ADR、踩坑记录、操作 how-to 与团队风格指南滚动快照——全部原创短文,零版权风险,专供框架回归测试。",
+    "lang": "zh",
+    "trust_posture": "internal-authoritative"
+  },
+  "facets": [],
+  "pipelines": [
+    {
+      "name": "notes",
+      "kind": "push",
+      "raw_dir": "raw/inbox",
+      "prefix": "",
+      "source_kinds": ["adr", "pitfall", "howto"],
+      "x-note": "push 直投口:raw/inbox/<date>-<slug>.md(frontmatter: title/date/kind);夹具内 4 篇,其中 1 篇故意不建源页 → sync 报 pending=1"
+    },
+    {
+      "name": "guide",
+      "kind": "rolling",
+      "raw_dir": "raw/guide",
+      "prefix": "guide-",
+      "source_kinds": ["convention"],
+      "x-note": "滚动源:团队风格指南 faithful 快照 + dated 派生;pending 依源页 frontmatter rolling_digest 判定;夹具不落 adapter(CI 只跑 sync status/pending,零网络)"
+    }
+  ],
+  "budgets": {
+    "page_tokens": 8000,
+    "map_lines": 100,
+    "boot_tokens": 4000,
+    "raw_slice_tokens": 1200,
+    "est_tokens_profile": "cjk"
+  },
+  "ingest_tiers": {
+    "default": "full",
+    "by_source_kind": {
+      "pitfall": "light"
+    },
+    "min_touch": {
+      "full": 5,
+      "light": 1
+    }
+  },
+  "typology_map": {
+    "source": "ADR/踩坑记录/操作 how-to/风格指南快照",
+    "entity": "服务/模块(如 greeter 服务)",
+    "concept": "协议/约定/故障模式",
+    "synthesis": "跨来源设计叙事",
+    "query": "how-do-I-X 问答缓存"
+  },
+  "staleness": {
+    "by_source_kind": {
+      "howto": "365d"
+    }
+  },
+  "peers": [],
+  "x-extensions": {
+    "x-fixture": "llmwiki CI 夹具(tests/run_ci.py 消费);内容全部合成"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "pipeline": "guide",
+  "slug": "style-guide",
+  "source_url": "https://example.com/hello-wiki/style-guide",
+  "version": "v3",
+  "date": "2026-07-10",
+  "fetched": "2026-07-16",
+  "sha256": "3669e20a0af9bdb6fa7c2342a2581b7b1776174dcaca6af28ba7d3c05eb699ef",
+  "note": "夹具合成:faithful 快照 style-guide.md 的抓取元信息(CONTRACT §6.1);sha256 即源页 rolling_digest 的机械权威"
+}

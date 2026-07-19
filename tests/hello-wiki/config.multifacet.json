@@ -1,0 +1,77 @@
+{
+  "$schema": "schema/wiki.config.schema.json",
+  "framework_version": "0.1.0",
+  "domain": {
+    "name": "hello-wiki-mf",
+    "description": "hello-wiki 示例项目知识库(multifacet 变体,CI 合成夹具):同一批合成内容,叠加 team 分面(infra/app,shard_index)与一条 peer 引用——覆盖条件模块矩阵 multi_facet + rolling_source + peers。",
+    "lang": "zh",
+    "trust_posture": "internal-authoritative"
+  },
+  "facets": [
+    {
+      "key": "team",
+      "values": ["infra", "app"],
+      "shard_index": true,
+      "badges": {
+        "infra": "🏗️",
+        "app": "📦",
+        "cross": "🔀"
+      }
+    }
+  ],
+  "pipelines": [
+    {
+      "name": "notes",
+      "kind": "push",
+      "raw_dir": "raw/inbox",
+      "prefix": "",
+      "source_kinds": ["adr", "pitfall", "howto"]
+    },
+    {
+      "name": "guide",
+      "kind": "rolling",
+      "raw_dir": "raw/guide",
+      "prefix": "guide-",
+      "source_kinds": ["convention"]
+    }
+  ],
+  "budgets": {
+    "page_tokens": 8000,
+    "map_lines": 100,
+    "boot_tokens": 4000,
+    "raw_slice_tokens": 1200,
+    "est_tokens_profile": "cjk"
+  },
+  "ingest_tiers": {
+    "default": "full",
+    "by_source_kind": {
+      "pitfall": "light"
+    },
+    "min_touch": {
+      "full": 5,
+      "light": 1
+    }
+  },
+  "typology_map": {
+    "source": "ADR/踩坑记录/操作 how-to/风格指南快照",
+    "entity": "服务/模块(如 greeter 服务)",
+    "concept": "协议/约定/故障模式",
+    "synthesis": "跨来源设计叙事",
+    "query": "how-do-I-X 问答缓存"
+  },
+  "staleness": {
+    "by_source_kind": {
+      "howto": "365d"
+    }
+  },
+  "peers": [
+    {
+      "alias": "hub",
+      "path": "__PEER_PATH__",
+      "x-note": "CI 现场造:run_ci.py 渲染前把 __PEER_PATH__ 替换为同批渲染出的 base 实例绝对路径(tmp 内);本机路径不入发布物(W-XRF-1/W-SEC-2)"
+    }
+  ],
+  "x-extensions": {
+    "x-fixture": "llmwiki CI 夹具 multifacet 变体(tests/run_ci.py 消费)"
+  }
+}

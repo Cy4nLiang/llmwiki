@@ -499,7 +499,7 @@ def compute_slots(cfg, fw_version):
         "- `python3 tools/sync.py`:跑全部管线采集 + 打印待 ingest 积压" + _m2("sync.py"),
         "- `python3 tools/sync.py status`:不联网看积压" + _m2("sync.py"),
         "- `python3 tools/build_site.py && python3 tools/build_index.py`:索引派生(内容/description 变更后必跑,W-IDX-1)" + _m2("build_site.py", "build_index.py"),
-        "- `python3 tools/lint_wiki.py`:机械 lint(M1 提供 `--check-slots` / `--check-config`)",
+        "- `python3 tools/lint_wiki.py`:完整机械 lint(断链/预算/新鲜度/staleness;`--manifest` 校验 frozen,W-UPG-1)",
         "- `python3 tools/eval_retrieval.py evals/golden.jsonl`:golden 回归(W-UPG-2)" + _m2("eval_retrieval.py"),
         "- `python3 tools/init_render.py --config wiki.config.json --target .`:补渲染/升级(已存在文件默认跳过)",
     ]
@@ -842,13 +842,32 @@ def main(argv=None):
         warnings.append("框架 tools/ 缺失,跳过拷贝")
     if not copy_tree(w, fw_root / "schema", "schema"):
         warnings.append("框架 schema/ 缺失,跳过拷贝")
+    if not copy_tree(w, fw_root / "adapters", "adapters"):
+        warnings.append("框架 adapters/ 缺失,跳过拷贝(CONTRACT/local_notes/skeleton 不可用)")
+    if not copy_tree(w, fw_root / "docs", "docs"):
+        warnings.append("框架 docs/ 缺失,跳过拷贝(skills 内 docs/ 指针将悬空)")
 
     # config 落位 + framework/{VERSION,base/} 快照(升级三方合并的 base)
     w.copy("wiki.config.json", cfg_path)
     w.write_text("framework/VERSION", fw_version + "\n")
     _mf = fw_root / "framework" / "MANIFEST.json"
     if _mf.exists():
-        w.copy("framework/MANIFEST.json", _mf)
+        # 快照只保留实例实际持有的条目:未拷入实例的框架文件不该出现在实例的 hash 契约里
+        try:
+            _mdata = json.loads(_mf.read_text(encoding="utf-8"))
+            _entries = _mdata.get("files", _mdata) if isinstance(_mdata, dict) else _mdata
+            if isinstance(_entries, list):
+                _kept = [e for e in _entries if (target / e.get("path", "")).exists()]
+                if isinstance(_mdata, dict) and "files" in _mdata:
+                    _mdata = dict(_mdata, files=_kept)
+                else:
+                    _mdata = _kept
+                w.write_text("framework/MANIFEST.json",
+                             json.dumps(_mdata, ensure_ascii=False, indent=1) + "\n")
+            else:
+                w.copy("framework/MANIFEST.json", _mf)
+        except (ValueError, OSError):
+            w.copy("framework/MANIFEST.json", _mf)
     else:
         warnings.append("框架 MANIFEST.json 缺失,实例未落快照(升级 hash 校验依赖,见 gen_manifest.py)")
     for src in sorted({src for src, _ in plan}):
@@ -910,13 +929,14 @@ def main(argv=None):
     print("\n下一步:")
     print("  1. cd %s" % target)
     print("  2. python3 tools/lint_wiki.py --check-slots --target .    # 渲染验收(0 残留)")
+    print("  3. python3 tools/build_site.py && python3 tools/build_index.py    # 先建空索引(W-IDX-1)")
     if push:
-        print("  3. 首条知识入库:投递 %s/<date>-<slug>.md(frontmatter: title/date/kind ∈ %s)"
+        print("  4. 首条知识入库:投递 %s/<date>-<slug>.md(frontmatter: title/date/kind ∈ %s)"
               % (push[0]["raw_dir"], "|".join(push[0]["source_kinds"]) or "…"))
     else:
-        print("  3. 接入适配器后 python3 tools/sync.py 抓首批源(契约见 adapters/CONTRACT.md)")
-    print("  4. python3 tools/lint_wiki.py --check-config wiki.config.json    # config 复检")
-    print("  5. 首批 ~10 源后:回填 wiki/_map.md 档位表/决策表页名,写 overview 首版,建 evals/golden.jsonl 基线")
+        print("  4. 接入适配器后 python3 tools/sync.py 抓首批源(契约见 adapters/CONTRACT.md)")
+    print("  5. python3 tools/lint_wiki.py --check-config wiki.config.json    # config 复检")
+    print("  6. 首批 ~10 源后:回填 wiki/_map.md 档位表/决策表页名,写 overview 首版,建 evals/golden.jsonl 基线")
     return 0
 
 

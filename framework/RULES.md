@@ -15,7 +15,7 @@
 | ID | 层 | 条款全文 | lint 检查项 | 违反后果 |
 |---|---|---|---|---|
 | W-ARCH-1 | frozen | `raw/` 不可变:禁止修改/删除/重命名其中任何文件;raw 与 wiki 记载冲突时 raw wins,修 wiki 不改 raw | raw 写入监测(git diff 审计) | lint fail;事实源被污染,须 revert |
-| W-ARCH-2 | frozen | 两类写入者分权:工具只写 `raw/` + `site/` + `state/`,分析 agent 只写 `wiki/`;任何跨界写入即违规(含向 peer 仓写入) | 写入路径白名单 | lint fail;层间信任链断裂 |
+| W-ARCH-2 | frozen | 两类写入者分权:工具只写 `raw/` + `site/` + `state/`(例外:重建 W-IDX-1 声明的 wiki 内派生物 `wiki/index*.md`、`wiki/contradictions.md`),分析 agent 只写 `wiki/`;任何跨界写入即违规(含向 peer 仓写入) | 写入路径白名单 | lint fail;层间信任链断裂 |
 | W-ARCH-3 | frozen | 根命名空间白名单:实例根目录成员限于契约架构图声明的目录/文件;杂物一律入 `_attic/` | 根目录成员校验 | lint warning,持续违规升 fail;grep 面失控 |
 | W-PAGE-1 | frozen(数值 config `budgets.page_tokens`) | 页面 token 预算超线必须拆「精华主页 + 子页」,主页留指针 | est_tokens 预算检查 | lint warning;整读成本失控、路由退化 |
 | W-PAGE-2 | frozen | `description:` = 分诊触发器:写「何时该读本页」+ 本页独有价值点,每页必填;不是内容摘要 | 必填检查(写法质量靠 golden 路由入口题兜底) | 缺失 lint fail;写偏 → 检索带偏在 eval 显形 |

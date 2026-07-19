@@ -8,7 +8,7 @@ description: 当例行体检、sync 之后、升级门禁前,或用户说「lint
 ## 机械层
 <a id="mechanical-layer"></a>
 
-> **M1 注**:先跑 `python3 tools/lint_wiki.py --check-slots`(渲染残留槽位)与 `--check-config`(config schema 校验);全量检查项 M2 落地,未落地项按下表含义手工 grep 替代。
+> 机械层单命令:`python3 tools/lint_wiki.py`(全量;`--json` 机读,`--manifest` 校验 frozen hash,W-UPG-1);`--check-slots` / `--check-config` 单查仍可用。
 
 `python3 tools/lint_wiki.py` 检查项 ↔ 规则 ID:
 

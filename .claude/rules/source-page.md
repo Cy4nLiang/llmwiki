@@ -67,5 +67,6 @@ status: draft
 ## 滚动源特有约定(存在 kind=rolling 的管线时生效)
 
 - **一份源页代表整份滚动日志/手册**,不逐版本建新源页;`raw_file` 指向 faithful 整体快照,逐条锚定用 dated 派生文件(grep 版本/日期标题,配方见 `wiki/_map.md`)。
+- frontmatter 须记 `rolling_digest: sha256:<hex>`(当前快照摘要,sync 判新依据)与可选 `rolling_latest`(版本号/日期,报告口径);每次刷新滚动源页最后一步回写两字段(约定详见 `docs/rolling-source.md`)。
 - 版本间变化在聚合页(timeline 面)记「演进」,不覆盖旧结论(W-ING-3);源页只精选里程碑,完整逐条永远回 raw。
 <!--END:rolling_source-->

@@ -5,8 +5,6 @@ description: 当要刷新知识库存量——用户说「同步」「/wiki-sync
 
 # wiki-sync — 管线同步与积压报告
 
-> **M1 注**:`tools/sync.py` 于 M2 落地;本 skill 先固化流程与产出格式,工具未就位时按各步「手工替代」逐管线执行,报告格式不变。
-
 ## 管线注册表(来自 wiki.config.json `pipelines[]`)
 
 <SLOT:pipelines.table>
@@ -14,11 +12,11 @@ description: 当要刷新知识库存量——用户说「同步」「/wiki-sync
 三型语义:
 - **pull**:调 adapter `discover` → `fetch`(幂等:已抓跳过,`--force` 重抓;限速退避);
 - **push**:人/CI 直投 raw 目录(含 inbox 捕获件),sync 不抓取只盘点;
-- **rolling**:整体覆盖快照 + dated 派生,pending 按版本 diff。
+- **rolling**:整体覆盖快照 + dated 派生,pending 按 `rolling_digest`(快照 sha256 vs 源页所记)判新;版本号仅作报告口径(见 `docs/rolling-source.md`)。
 
 ## 执行流程
 
-1. **逐管线采集**(M2 后:`python3 tools/sync.py`;手工替代:逐管线跑 adapter 子命令,push 型跳过)。工具只写 raw/ + state/ + site/,**不碰 wiki/**(W-ARCH-2);raw 既有文件永不改写(W-ARCH-1)。
+1. **逐管线采集**:`python3 tools/sync.py`(单管线 `--only=<name>`;push 型无抓取)。工具只写 raw/ + state/ + site/,**不碰 wiki/**(W-ARCH-2);raw 既有文件永不改写(W-ARCH-1)。
 2. **重算 pending**(见下节)。
 3. **站点/索引重建**(命令见文末工具速查)。
 4. **打印同步报告**(格式见下)→ 待 ingest 逐篇/批量路由 wiki-ingest skill。
@@ -29,7 +27,7 @@ description: 当要刷新知识库存量——用户说「同步」「/wiki-sync
 **pending = raw 现存文件集合 − 已有源页集合**,按管线前缀与 slug 对齐(raw 目录:<SLOT:pipelines.raw_dirs>)。不依赖一次性台账:重跑恒得同一结果;误删源页会重新出现在 pending(raw wins,W-ARCH-1)。
 
 <!--BEGIN:rolling_source-->
-rolling 管线例外:快照同名整体覆盖,pending 按「快照最新版本 vs 源页所记最新版本」diff 成立;有新版本 → pending 一条「刷新滚动源页」(走 wiki-ingest 滚动源特例,变化记「演进」),而非新建页。
+rolling 管线例外:快照同名整体覆盖,pending 按「快照 sha256 vs 源页 `rolling_digest`」判新;digest 变化 → pending 一条「刷新滚动源页」(走 wiki-ingest 滚动源特例,变化记「演进」,**刷新最后一步回写 `rolling_digest`/`rolling_latest`**),而非新建页。
 <!--END:rolling_source-->
 
 ## 同步报告格式(固定产出)
