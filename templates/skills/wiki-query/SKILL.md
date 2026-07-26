@@ -31,6 +31,11 @@ description: 当用户就 domain 知识提问——事实、对比、演进、�
 
 精确事实(版本号/日期/价格/专名)**只认 grep 原文 exact-match**,不信参数记忆与语义近似;grep 前先做双语/同义关键词扩展。凡发现「参数记忆答案 ≠ 库内事实」,把该事实域登记进 `_map` 纠偏区(Things to remember),防下次再犯。
 
+## 命中被替代页必须跟到最新(W-ING-5)
+<a id="follow-supersession"></a>
+
+命中的页若 frontmatter 带 `superseded_by:`(或正文有 `> **已被取代**` 横幅),**不得直接拿它作答**:跟到后继页读最新口径,答案以后继页为准;确需引用旧结论时明说「旧版口径,已被 [[后继]] 取代」。旧页只作溯源用,不是现行事实。全库 lineage 一览见 `wiki/contradictions.md` 的「演进链」分节(派生物)。
+
 ## 冷启动/未命中降级链(W-QRY-3)
 <a id="cold-start-fallback"></a>
 

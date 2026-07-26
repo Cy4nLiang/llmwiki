@@ -12,6 +12,8 @@
                                无此 facet 时输出单一 `wiki/index-sources.md`;
   - wiki/contradictions.md     全库 `> ⚠️` 标记聚合(W-ING-3 真矛盾的机器汇总面),
                                逐条带来源 wikilink。
+  - wiki/backlinks.md          反链索引(W-IDX-4):每页被哪些页引用,经 lib/wikigraph 解析
+                               全库 wikilink 派生;每行 `- [[被引页]] ← [[引用页]], …`。
 
 写入边界(W-ARCH-2 例外条款):本工具只写上述 wiki 内派生物;每个生成区带
 `<!-- generated … -->` 标记,手编无效——改对应页 frontmatter `description:` 后重跑。
@@ -32,6 +34,7 @@ for _p in (str(_TOOLS), str(_TOOLS / "lib")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 import fm  # noqa: E402  (钉死 API:tools/lib/fm.py)
+import wikigraph  # noqa: E402  (图谱/派生物判定单源,W-IDX-4)
 
 INDEX_DESC_LEN = 140     # 主索引每行摘要截断长度(字符):检索线索,不是正文
 AGG_KINDS = [("syntheses", "综合 / Syntheses"),
@@ -195,12 +198,22 @@ def source_shards(wiki: Path, cfg: dict):
     return facet, shards
 
 
+def backlink_lines(wiki: Path) -> list:
+    """反链条目行:`- [[被引页]] ← [[引用页1]], …`(W-IDX-4;lint_wiki 复用,勿改签名)。
+
+    经 lib/wikigraph 从全库 wikilink 派生(边表 → 反链),按被引页 slug 升序、来源页升序去重;
+    派生物/log 的出链不入图,故不会把孤儿页救活;无入链的页不出现在此(那才是孤儿)。"""
+    bl = wikigraph.backlinks(wikigraph.build_graph(wiki))
+    return ["- [[%s]] ← %s" % (to, ", ".join("[[%s]]" % f for f in froms))
+            for to, froms in bl.items()]
+
+
 def contradiction_lines(wiki: Path) -> list:
-    """全库 `> ⚠️` blockquote 聚合行:`- [[rel]] — 文本(截 300 字)`(log/index*/contradictions 豁免)。"""
+    """全库 `> ⚠️` blockquote 聚合行:`- [[rel]] — 文本(截 300 字)`(log/派生物豁免)。"""
     out = []
     for f in sorted(wiki.glob("**/*.md")):
         rel = f.relative_to(wiki).as_posix()[:-3]
-        if rel in ("log", "contradictions") or rel.startswith("index"):
+        if rel == "log" or wikigraph.is_derived(rel):  # log 流水账 + 派生物(含 backlinks)豁免
             continue
         lines = f.read_text(encoding="utf-8").split("\n")
         i = 0
@@ -214,6 +227,30 @@ def contradiction_lines(wiki: Path) -> list:
             else:
                 i += 1
     return out
+
+
+def lineage_lines(wiki: Path) -> list:
+    """全库 supersession 演进链聚合行(W-ING-5;log/派生物豁免,与 contradiction_lines 同口径)。
+
+    数据源 = 聚合页 frontmatter 的 `supersedes:` / `superseded_by:`(两侧同一条边只收一次)。
+    行格式**刻意不以 `- [[` 起头**:contradictions.md 的 ⚠️ 条目区按该前缀被机检计数,
+    演进链混进去会污染那个口径。不可解析的 slug 渲染成反引号纯文本(不产生断链 error)。
+    """
+    page_set = {p.relative_to(wiki).as_posix()[:-3] for p in sorted(wiki.rglob("*.md"))}
+    pairs = set()
+    for f in sorted(wiki.glob("**/*.md")):
+        rel = f.relative_to(wiki).as_posix()[:-3]
+        if rel == "log" or wikigraph.is_derived(rel):
+            continue
+        meta, _body = fm.parse_frontmatter(f.read_text(encoding="utf-8"))
+        for t in wikigraph.fm_slugs(meta, "supersedes"):          # 本页取代 t:t 旧 → rel 新
+            pairs.add((wikigraph.resolve_slug(t, page_set) or t, rel))
+        for t in wikigraph.fm_slugs(meta, "superseded_by"):       # 本页被 t 取代:rel 旧 → t 新
+            pairs.add((rel, wikigraph.resolve_slug(t, page_set) or t))
+    def _ref(slug):
+        return "[[%s]]" % slug if slug in page_set else "`%s`(未解析)" % slug
+    return ["- 旧 %s → 新 %s" % (_ref(old), _ref(new))
+            for old, new in sorted(pairs)]
 
 
 # ---------------------------------------------------------------- 渲染
@@ -278,10 +315,33 @@ def render_index(cfg: dict, agg: dict, facet, shards: dict, qlines: list) -> str
     return "\n".join(parts)
 
 
-def render_contradictions(entries: list, created: str, today: str) -> str:
+def render_backlinks(lines: list, created: str, today: str) -> str:
+    return """---
+title: 反链索引 / Backlinks
+description: "查『谁引用了 X』或找孤儿线索时读本页:每页被哪些页引用的机器派生反链,逐条 wikilink 可溯源。"
+type: overview
+created: %s
+updated: %s
+tags: [meta, index]
+---
+
+# 反链索引 / Backlinks (%d)
+
+> 派生页(W-IDX-4):由 `tools/build_index.py` 从全库 wikilink(经 `lib/wikigraph` 解析)派生,
+> 每行 `- [[被引页]] ← [[引用页]], …`。**手编即被下次 build 覆盖**;要改引用关系改对应页正文。
+> 本页是派生物,其链接不计有机入链(不会把孤儿页救活);无入链的页不出现在此——那才是孤儿(见 lint)。
+
+%s
+%s
+""" % (created, today, len(lines), _gen_mark(),
+       "\n".join(lines) if lines else "- (暂无反链)")
+
+
+def render_contradictions(entries: list, created: str, today: str,
+                          lineage=()) -> str:
     return """---
 title: 未决矛盾/张力一览
-description: "全库 ⚠️ 标记的机器派生汇总:查『当前有哪些未决矛盾/口径张力』读本页;逐条溯源点 wikilink。"
+description: "全库 ⚠️ 标记的机器派生汇总:查『当前有哪些未决矛盾/口径张力』读本页;逐条溯源点 wikilink;附 supersession 演进链。"
 type: overview
 created: %s
 updated: %s
@@ -295,8 +355,16 @@ tags: [meta, contradictions]
 
 %s
 %s
+
+## 演进链 / Lineage (%d)
+
+> 由 frontmatter `supersedes:` / `superseded_by:` 派生(W-ING-5):**演进 ≠ 矛盾**——被取代的旧结论
+> 不进上面的 ⚠️ 区,只在此登记 lineage。查「这页还是最新的吗」看本节;命中旧页须跟到后继页。
+
+%s
 """ % (created, today, len(entries), _gen_mark(),
-       "\n".join(entries) if entries else "- (暂无 ⚠️ 标记)")
+       "\n".join(entries) if entries else "- (暂无 ⚠️ 标记)",
+       len(lineage), "\n".join(lineage) if lineage else "- (暂无演进链)")
 
 
 # ---------------------------------------------------------------- 主流程
@@ -338,7 +406,11 @@ def build(root: Path, cfg: dict) -> dict:
 
     emit(wiki / "index.md", render_index(cfg, agg, facet, shards, qlines))
     p = wiki / "contradictions.md"
-    emit(p, render_contradictions(entries, _preserved_created(p, today), today))
+    lin = lineage_lines(wiki)
+    emit(p, render_contradictions(entries, _preserved_created(p, today), today, lin))
+    bl_lines = backlink_lines(wiki)
+    p_bl = wiki / "backlinks.md"
+    emit(p_bl, render_backlinks(bl_lines, _preserved_created(p_bl, today), today))
 
     return {
         "agg_entries": sum(len(v) for v in agg.values()),
@@ -347,6 +419,8 @@ def build(root: Path, cfg: dict) -> dict:
         "shard_facet": facet["key"] if facet else None,
         "queries": len(qlines),
         "contradictions": len(entries),
+        "lineage": len(lin),
+        "backlinks": len(bl_lines),
         "written": written, "unchanged": unchanged, "removed": removed,
     }
 
@@ -379,10 +453,11 @@ def main(argv=None) -> int:
     else:
         shard_desc = ", ".join("%s=%d" % (k, v) for k, v in stats["shards"].items())
         print("index.md rebuilt: %d agg entries; sources %d (%s%s); queries %d; "
-              "contradictions %d; wrote %d, unchanged %d%s"
+              "contradictions %d; lineage %d; backlinks %d; wrote %d, unchanged %d%s"
               % (stats["agg_entries"], stats["sources"],
                  ("facet %s: " % stats["shard_facet"]) if stats["shard_facet"] else "",
-                 shard_desc, stats["queries"], stats["contradictions"],
+                 shard_desc, stats["queries"], stats["contradictions"], stats["lineage"],
+                 stats["backlinks"],
                  len(stats["written"]), len(stats["unchanged"]),
                  (", removed stale: %s" % ",".join(stats["removed"])) if stats["removed"] else ""))
     return 0

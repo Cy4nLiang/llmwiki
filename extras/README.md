@@ -6,7 +6,7 @@
 > `extras/` 不影响任何核心承诺。`init_render` 不把 extras 拷进实例:要用就从框架
 > checkout 直接 `--root` 指向实例运行,或手工拷入实例后运行。
 >
-> 两个组件都遵守框架 CLI 约定:`--root` 定位实例;exit 0 OK / 1 有发现或文件级失败 /
+> 各组件都遵守框架 CLI 约定:`--root` 定位实例;exit 0 OK / 1 有发现或文件级失败 /
 > 2 配置用法错;机器输出 `--json`(serve 是常驻服务,无 --json)。仅 Python 标准库。
 
 ## serve.py — 本地阅读器 + action API
@@ -91,7 +91,57 @@ label 缺省取目录名。两目录必须在 `raw/` 下。
   用不到 raw 内的导航横幅;
 - 语料在 rolling 管线里:被本工具明确拒绝(见上)。
 
+## hooks/ — Claude Code 捕获 + 启动提醒 hook(opt-in)
+
+```bash
+# 作为 Claude Code hook 配置(见 docs/hooks.md 的 settings.json 片段),或手动:
+echo '{"cwd":"<实例根>"}' | python3 extras/hooks/boot_reminder.py     # SessionStart:注入「先读 _map」
+echo '{"cwd":"<实例根>"}' | python3 extras/hooks/capture_draft.py     # SessionEnd/Stop:投递 inbox 草稿
+```
+
+- **boot_reminder.py**(`SessionStart`):注入 additionalContext 提醒 agent 先读 `wiki/_map.md`
+  + W-CAP-1 收尾检查点;不写文件。
+- **capture_draft.py**(`SessionEnd`/`Stop`):会话收尾在 `raw/inbox/` 投递 `kind: draft` 占位草稿
+  (**投递≠整合**,W-CAP-1;绝不写 `wiki/`;同 session 幂等)——下次 `sync` 报 pending 提示整合。
+
+两者纯标准库、`exit 恒 0`(不打断会话)、非 llmwiki 实例静默无操作;实例根走 `--root` /
+`$LLMWIKI_ROOT` / hook `cwd`。完整配置与人工 e2e 清单见 **`docs/hooks.md`**。
+
+### 何时不需要 hooks
+
+- 单人偶尔用、习惯手动在会话里说「这个记一下」:手动投递已够,W-CAP-1 本就是 agent 判断驱动;
+- 非 Claude Code 宿主:hook 契约是 Claude Code 专属,其他宿主按契约文件路径手动走捕获流。
+
+## mcp_server.py — MCP server(stdio;4 工具)
+
+```bash
+python3 extras/mcp_server.py --root <实例根>          # 由宿主按 stdio 拉起,不手动跑
+```
+
+把实例暴露成 **MCP stdio server**(JSON-RPC 2.0,协议 `2025-11-25` 钉死)。一级宿主 Claude Code
+走 skills 就够了——本组件是给 **Claude Desktop / Cursor / Windsurf 等非 skills 宿主**消费同一座
+wiki 的通用接口(R7)。
+
+| 工具 | 动作 | 执行方式 |
+|---|---|---|
+| `wiki_map` | 路由页全文 + 读取档位 + token 预算 | 直读 `wiki/_map.md` |
+| `wiki_search` | BM25 排名检索 | subprocess 调 `tools/search.py --json`(检索单源,不复制 BM25) |
+| `wiki_page` | 按 slug 取页(`mode=tldr\|full`、`max_tokens` 硬上限) | `tools/lib/{fm,wikigraph}` |
+| `wiki_capture` | 投递草稿到 push 管线 raw 目录 + 登记台账 | 写 raw/ 后 subprocess 调 `adapters/local_notes.py register` |
+
+纯标准库、零端口(stdio 管道);`--root` 定位实例;exit 0 对端关闭 stdin 正常退出 / 1 stdio 级失败 /
+2 配置用法错。**stdout 只走 JSON-RPC 帧,诊断一律 stderr**(这是与 serve.py 的显式差异——那边诊断打
+stdout);唯一写面是 push 管线 raw 目录,**绝不写 `wiki/`**(W-ARCH-2),同名投递件幂等跳过(W-ARCH-1)。
+完整宿主注册片段与 MCP inspector 验证清单见 **`docs/mcp.md`**。
+
+### 何时不需要 mcp_server
+
+- 只用 Claude Code:skills 已覆盖全部工作流,MCP 是多一层间接;
+- 不需要外部宿主读库、或宿主已能直接读文件(纯文件库本就 grep 可达)。
+
 ---
 
-2026-07-19 · 两组件均泛化自参考实例 newpj4(`tools/serve.py` / `tools/bilingual_link.py`),
-含其实测教训(iCloud dataless 文件防呆)。问题走框架 issue;好的扩展按回流通道提 PR(MINOR)。
+2026-07-19 · serve/i18n 泛化自参考实例 newpj4(`tools/serve.py` / `tools/bilingual_link.py`),
+含其实测教训(iCloud dataless 文件防呆);hooks 随 framework v1.3.0 加入(S3,2026-07-25);
+mcp_server 随 framework v1.4.0 加入(S8,2026-07-26)。
+问题走框架 issue;好的扩展按回流通道提 PR(MINOR)。

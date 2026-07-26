@@ -49,6 +49,23 @@ paths: ["wiki/entities/**", "wiki/concepts/**", "wiki/syntheses/**", "wiki/queri
 - 过期窗口由 config staleness 按 source_kind 声明:<SLOT:staleness.rules>
 - lint 依据 `verified:` 与过期窗口报「过期未核实」(W-LNT-3)——stale 的操作性页面是危险品,不是旧文章;核实后 bump `verified:`,推翻的结论按 W-ING-3 处理。
 
+## 演进链 / supersession(W-ING-5)
+<a id="supersession-fields"></a>
+
+结论被新版**整页取代**时(不是补充、不是分面差异)用一对可选 frontmatter 登记 lineage,让「这页还是最新的吗」可机器回答:
+
+- 新页:`supersedes: <旧页 slug>`;旧页:`superseded_by: <新页 slug>`。**必须双向都写**(单向会被 lint 报 `lineage` warning)。
+- 值写页 slug(推荐带子目录前缀,如 `concepts/foo`;裸 `foo` 也能解析但同名歧义时按子目录顺序首个命中)。多个目标写**单行列表** `supersedes: [a, b]`——**不要用换行 `- a` 的块写法**,frontmatter 解析器只认标量与单行列表,块写法会被静默丢成空值(lint 会报出来)。
+- 旧页正文留一行**横幅**指向后继,让 grep/整读的人当场看见:
+
+```
+> **已被取代**:本页结论已由 [[concepts/foo-v2]] 取代(W-ING-5);保留供溯源,勿在此追加新结论。
+```
+
+横幅**不用 ⚠️**:⚠️ 专表「真矛盾」(W-ING-3),演进不是矛盾——混用会把旧页塞进 `contradictions.md` 的未决矛盾区。lineage 由 build_index 派生到 `contradictions.md` 的「演进链」分节(禁手编,改 frontmatter 后重跑)。查询命中被替代页时必须跟到后继页再作答。
+
+明确**不做** confidence / 置信衰减:取代关系是人裁决的离散事实,不是打分。
+
 ## 矛盾标记(frozen 段落 —— W-ING-3,禁静默覆盖)
 <a id="contradiction-format"></a>
 

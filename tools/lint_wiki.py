@@ -13,14 +13,17 @@
           W-PAGE-4  frontmatter 必填与漂移(type 与目录不符;源页附加字段 + config facet 字段)
           W-PAGE-1  页面 token 预算(config budgets.page_tokens;-timeline/-appendix 子页豁免)
           W-LNT-2   _map 行数 ≤ config budgets.map_lines
-          W-IDX-1   索引新鲜度(index*/contradictions 派生物 vs frontmatter 重算)+ 生成区标记
-          W-IDX-2   人读 index 与机器 jsonl 同 build 产出(site/agent/*.jsonl 存在性,soft)
+          W-IDX-1   索引新鲜度(index*/contradictions/backlinks 派生物 vs frontmatter/图谱重算)+ 生成区标记
+          W-IDX-2   人读 index 与机器索引同 build 产出(site/agent/{*.jsonl,search-index/graph.json} 存在性,soft)
+          W-IDX-4   反链 backlinks.md / 图谱 graph.json 派生(wikilink 单源解析;新鲜度并入 W-IDX-1 档)
           W-LNT-3   staleness 过期未核实(config staleness 窗口 vs verified:;
                     操作类 source_kind 无 verified 视为自 created: 起算)
           W-ING-1   准孤儿源页(无聚合页有机入链)/ light 档占比 >50% 告警(ingest_tier: light)
           W-LOG-1   log 行格式抽查(`## [YYYY-MM-DD] <op> | <one-line>`)
           W-ARCH-3  根命名空间白名单(杂物入 _attic/)
           W-SEC-2   state/ 入 .gitignore + config/manifest 凭证样式扫描(soft)
+          W-SEC-3   内容脱敏扫描:wiki/raw 文本命中密钥/凭证样式(soft;只报类型不回显值;
+                    `<!-- secscan:allow -->` 豁免下一行)
           W-UPG-1   --manifest:对照 framework/MANIFEST.json 校验 frozen 档 sha256,
                     漂移报 fork 警告(有漂移 exit 1,供 sync 常跑路径当场报警)
 
@@ -57,6 +60,16 @@ try:
     import init_render as _ir
 except ImportError as e:  # pragma: no cover
     print("错误: 无法导入同目录 init_render.py(校验器单源所在):%s" % e, file=sys.stderr)
+    sys.exit(2)
+try:
+    import wikigraph  # 派生物判定 / slug 解析 / 图谱单源(W-IDX-4)
+except ImportError as e:  # pragma: no cover
+    print("错误: 无法导入 tools/lib/wikigraph.py(图谱/派生物判定单源):%s" % e, file=sys.stderr)
+    sys.exit(2)
+try:
+    import secscan  # 内容脱敏扫描(W-SEC-3)
+except ImportError as e:  # pragma: no cover
+    print("错误: 无法导入 tools/lib/secscan.py(内容脱敏扫描):%s" % e, file=sys.stderr)
     sys.exit(2)
 
 # ---------------------------------------------------------------- M1 检查(行为不变)
@@ -102,7 +115,6 @@ def check_config(path):
 
 # ---------------------------------------------------------------- 完整机械 lint(M2)
 
-SUBDIRS = ("sources", "entities", "concepts", "syntheses", "queries")
 TYPE_BY_DIR = {"sources": "source", "entities": "entity", "concepts": "concept",
                "syntheses": "synthesis", "queries": "query"}
 REQUIRED_ALL = ("title", "description", "type", "created", "tags", "status")
@@ -133,6 +145,27 @@ def _tags(meta):
     return [t.strip() for t in str(v).strip("[] ").split(",") if t.strip()]
 
 
+def _successor_banner(body, successor, resolve, fmmod):
+    """找被替代页指向后继的横幅行;返回该行(未找到返回 None)。
+
+    判定 = blockquote 行内含解析到 successor 的 wikilink。刻意**不要求**含 ⚠️——⚠️ 是
+    W-ING-3 的「真矛盾」标记,演进不是矛盾;反之横幅误用 ⚠️ 会把旧页塞进 contradictions
+    的 ⚠️ 区(那里按 `- [[` 前缀被机检计数),故调用方对返回行再查一次 ⚠️ 并报警。
+    逐行调用 iter_wikilinks 故传 skip_code=False:围栏状态无法跨行调用维持,
+    True 只会白付一次检查(示范用的横幅请写在围栏外或改用别的后继 slug)。
+    fmmod 由调用方传入(wikilink 解析单源经 run_lint 的注入口径,模块级不持有 fm)。
+    """
+    for line in body.split("\n"):
+        if not line.lstrip().startswith(">"):
+            continue
+        for target, _display, _lineno in fmmod.iter_wikilinks(line, skip_code=False):
+            if "::" in target:                  # 跨实例引用不作 lineage 端点(W-XRF-1)
+                continue
+            if resolve(target) == successor:
+                return line
+    return None
+
+
 def _pdate(s):
     try:
         return datetime.date.fromisoformat(str(s).strip())
@@ -154,17 +187,12 @@ def run_lint(root: Path, cfg: dict, fmmod, with_manifest: bool = False) -> dict:
 
     all_md = sorted(wiki.rglob("*.md"))
     page_set = {p.relative_to(wiki).as_posix()[:-3] for p in all_md}
-    # 派生物(W-IDX-1):其中的链接不计有机入链,避免索引/汇总把孤儿页"救活"
-    derived = {s for s in page_set if s == "contradictions" or s.startswith("index")}
+    # 派生物(W-IDX-1):其中的链接不计有机入链,避免索引/汇总把孤儿页"救活"。
+    # 判定走 wikigraph 单源(新增派生物只改那一处;含 backlinks,W-IDX-4)
+    derived = {s for s in page_set if wikigraph.is_derived(s)}
 
-    def resolves(t):
-        if t in page_set:
-            return t
-        if "/" not in t:
-            for d in SUBDIRS:
-                if "%s/%s" % (d, t) in page_set:
-                    return "%s/%s" % (d, t)
-        return None
+    def resolves(t):   # 委托 wikigraph 单源(解析算法 + 子目录集 SUBDIRS 均单源,W-IDX-4)
+        return wikigraph.resolve_slug(t, page_set)
 
     # ---- W-PAGE-3 断链 + 入链计数;W-XRF-1 peer 链接分流 -----------------
     inbound_organic = Counter()
@@ -234,6 +262,66 @@ def run_lint(root: Path, cfg: dict, fmmod, with_manifest: bool = False) -> dict:
             elif kind is None and raw_file:
                 fm_drift.append("%s: raw_file=%s 未匹配任何管线 raw_dir(source_url 亦缺)" % (rel, raw_file))
 
+    # ---- W-ING-5 supersession 演进链(双向一致 / 目标可解析 / 被替代页横幅)------
+    # 全 warning 级:lineage 是可选字段,残缺不该挡 exit;但残缺会让「跟到最新」协议失效,故必报。
+    lineage_bad = []
+    by_rel = {pg["rel"]: pg for pg in pages}
+    for pg in pages:
+        rel, meta, body = pg["rel"], pg["meta"], pg["body"]
+        if rel in derived:
+            continue
+        for key, inverse in (("supersedes", "superseded_by"),
+                             ("superseded_by", "supersedes")):
+            vals = wikigraph.fm_slugs(meta, key)
+            if key in meta and not vals:                 # 键在值空:多半写了换行 `- a` 块列表
+                lineage_bad.append("%s: %s 值为空(简易 YAML 只认标量或单行 `%s: [a, b]`,"
+                                   "换行 `- a` 写法会被静默丢弃)" % (rel, key, key))
+                continue
+            for t in vals:
+                tgt = resolves(t)
+                if tgt is None:
+                    lineage_bad.append("%s: %s 目标 %s 无法解析到任何页" % (rel, key, t))
+                    continue
+                if tgt == rel:
+                    lineage_bad.append("%s: %s 指向自身" % (rel, key))
+                    continue
+                if wikigraph.is_derived(tgt):
+                    lineage_bad.append("%s: %s 指向派生物 %s(派生页不可作 lineage 端点)"
+                                       % (rel, key, tgt))
+                    continue
+                other = by_rel.get(tgt)
+                if other is None:
+                    lineage_bad.append("%s: %s 目标 %s 不是聚合页/源页(无法双向校验)"
+                                       % (rel, key, tgt))
+                    continue
+                back = [resolves(x) for x in wikigraph.fm_slugs(other["meta"], inverse)]
+                if rel not in back:                      # 双向一致:A supersedes B ⟺ B superseded_by A
+                    lineage_bad.append("%s: %s %s 单向——对侧 %s 缺 `%s: %s`"
+                                       % (rel, key, tgt, tgt, inverse, rel))
+                if key == "superseded_by":
+                    banner = _successor_banner(body, tgt, resolves, fmmod)
+                    if banner is None:
+                        lineage_bad.append("%s: 被 %s 取代但正文缺指向后继的横幅行"
+                                           "(`> **已被取代**:… [[%s]] …`,勿用 ⚠️)"
+                                           % (rel, tgt, tgt))
+                    elif "⚠️" in banner:         # 否则本页被 contradiction_lines 收进 ⚠️ 区
+                        lineage_bad.append("%s: 指向 %s 的横幅误用 ⚠️——演进≠矛盾(W-ING-3),"
+                                           "该标记会把本页登记成未决矛盾;去掉 ⚠️ 即可"
+                                           % (rel, tgt))
+    try:                                                  # 演进链派生物新鲜度(warning,不升 error)
+        import build_index as _bi                         # 延迟导入 + 广捕:与 W-IDX-1 块同款
+        lin_lines = _bi.lineage_lines(wiki)                # (校验器自身故障降级为单条报告,
+    except Exception as e:  # noqa: BLE001                #  不让一条 soft 检查带崩整份 lint)
+        lin_lines = []
+        lineage_bad.append("(无法校验演进链新鲜度:%s)" % e)
+    if lin_lines:
+        cpath_l = wiki / "contradictions.md"
+        ctxt_l = cpath_l.read_text(encoding="utf-8") if cpath_l.is_file() else ""
+        for line in lin_lines:
+            if line not in ctxt_l:
+                lineage_bad.append("contradictions.md 演进链落后: %s… → 跑 "
+                                   "python3 tools/build_index.py" % line[:80])
+
     # ---- W-PAGE-1 页面 token 预算 ---------------------------------------
     budget = cfg["budgets"]["page_tokens"]
     overweight = []
@@ -290,6 +378,16 @@ def run_lint(root: Path, cfg: dict, fmmod, with_manifest: bool = False) -> dict:
                     stale.append("contradictions.md 落后: %s…" % line[:90])
         elif build_index.contradiction_lines(wiki):
             stale.append("wiki/contradictions.md 缺失 → 跑 python3 tools/build_index.py")
+        # backlinks.md 新鲜度(W-IDX-4 派生物;与 index/contradictions 同档)
+        bl_lines = build_index.backlink_lines(wiki)
+        blpath = wiki / "backlinks.md"
+        if blpath.is_file():
+            bltxt = blpath.read_text(encoding="utf-8")
+            for line in bl_lines:
+                if line not in bltxt:
+                    stale.append("backlinks.md 落后: %s…" % line[:90])
+        elif bl_lines:
+            stale.append("wiki/backlinks.md 缺失 → 跑 python3 tools/build_index.py")
         # 生成区标记(手编检测的机械近似:派生物必须保留 generated 标记)
         for s in sorted(derived):
             txt = (wiki / (s + ".md")).read_text(encoding="utf-8")
@@ -341,11 +439,14 @@ def run_lint(root: Path, cfg: dict, fmmod, with_manifest: bool = False) -> dict:
         for e in root.iterdir()
         if not e.name.startswith(".") and e.name not in ROOT_WHITELIST)
 
-    # ---- W-IDX-2 人机目录同 build(soft:jsonl 存在性)--------------------
+    # ---- W-IDX-2 人机目录同 build(soft:机器索引存在性)------------------
     idx2_items = []
-    if any("/" in s for s in page_set) and not (root / "site" / "agent" / "pages.jsonl").is_file():
-        idx2_items.append("site/agent/pages.jsonl 缺失 — 人读 index 与机器 jsonl 应同一次 build 产出"
-                          "(跑 python3 tools/build_site.py)")
+    if any("/" in s for s in page_set):
+        for rel in ("site/agent/pages.jsonl", "site/agent/search-index.json",
+                    "site/agent/graph.json"):   # search-index W-IDX-3、graph W-IDX-4
+            if not (root / rel).is_file():
+                idx2_items.append("%s 缺失 — 机器索引与人读 index 应同一次 build 产出"
+                                  "(跑 python3 tools/build_site.py)" % rel)
 
     # ---- W-SEC-2 gitignore + 凭证样式扫描(soft)-------------------------
     sec_items = []
@@ -362,6 +463,30 @@ def run_lint(root: Path, cfg: dict, fmmod, with_manifest: bool = False) -> dict:
         if f.is_file() and cred_re.search(f.read_text(encoding="utf-8")):
             sec_items.append("%s: 疑似凭证样式字段 — 凭证只走环境变量,禁落 config/manifest"
                              % f.relative_to(root).as_posix())
+
+    # ---- W-SEC-3 内容脱敏扫描(soft:wiki/raw 文本命中密钥样式;只报类型不回显值)-----
+    secscan_items = []
+    secscan_skipped = 0
+    # 派生页(index/backlinks/contradictions)内容派生自源页 frontmatter,扫源页即够;
+    # 排除以免源页密钥在派生页双报(is_derived 单源,W-IDX-4)
+    scan_targets = [p for p in all_md
+                    if p.relative_to(wiki).as_posix()[:-3] not in derived]
+    raw_dir = root / "raw"
+    if raw_dir.is_dir():
+        scan_targets += sorted(p for p in raw_dir.rglob("*")
+                               if p.is_file() and p.suffix in (".md", ".txt"))
+    for p in scan_targets:
+        try:
+            txt = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            secscan_skipped += 1   # fail-open 显式化:不静默漏(密钥扫描器不该悄悄跳文件)
+            continue
+        rel = p.relative_to(root).as_posix()
+        for hit in secscan.scan_text(txt):
+            secscan_items.append("%s:%d 疑似 %s" % (rel, hit["line"], hit["kind"]))
+    if secscan_skipped:
+        secscan_items.append("(%d 个文件无法解码,W-SEC-3 未覆盖——可能漏扫,人工核对)"
+                             % secscan_skipped)
 
     # ---- W-XRF-1 peers soft 检查 ----------------------------------------
     xrf_items = []
@@ -434,6 +559,10 @@ def run_lint(root: Path, cfg: dict, fmmod, with_manifest: bool = False) -> dict:
              "date_published/date_ingested + config facet 字段。description 是分诊面,每页必填(W-PAGE-2)。"),
         _chk("fm_drift", "W-PAGE-4", "Frontmatter 漂移", "error", fm_drift,
              "type 与所在目录不符 / raw_file 不在任何管线 raw_dir 下。"),
+        _chk("lineage", "W-ING-5", "supersession 演进链 / Lineage", "warning", lineage_bad,
+             "supersedes/superseded_by 须双向一致、目标可解析且非派生物/自身;被替代页正文留"
+             "指向后继的横幅行(`> **已被取代**:… [[后继]]`,勿用 ⚠️——演进≠矛盾);"
+             "改动后重跑 build_index 刷新 contradictions.md 演进链分节。"),
         _chk("overweight", "W-PAGE-1", "超预算页 / Pages over token budget", "warning", overweight,
              "超 budgets.page_tokens 的页应拆「精华主页 + 子页」,主页留指针。"),
         _chk("map_budget", "W-LNT-2", "_map 行数预算", "error", map_items,
@@ -452,6 +581,9 @@ def run_lint(root: Path, cfg: dict, fmmod, with_manifest: bool = False) -> dict:
              "根目录只允许契约架构图声明的成员;杂物一律入 _attic/。"),
         _chk("gitignore_creds", "W-SEC-2", "state/.gitignore 与凭证扫描(soft)", "warning", sec_items,
              "凭证只走环境变量;state/、*.env 入 gitignore。"),
+        _chk("content_secrets", "W-SEC-3", "内容脱敏扫描(soft)", "warning", secscan_items,
+             "wiki/raw 文本疑含密钥/凭证。wiki 页:遮蔽,或误报则加 `<!-- secscan:allow -->`(豁免下一行);"
+             "raw/ 源不可改:ingest 时遮蔽,勿写进 wiki,并在源页 Processing Notes 标注(W-SEC-1)。"),
         _chk("peer_links", "W-XRF-1", "跨实例链接(soft)", "warning", xrf_items,
              "peer 断链/不可达仅计数,不 fail;peers 路径为本机信息,不入发布物(W-SEC-2)。"),
     ]
