@@ -26,7 +26,9 @@ import sys
 from pathlib import Path
 
 # "knowledge":框架仓自带的 dogfood 内嵌实例(实例数据,不属框架升级契约,不入 MANIFEST 三档)
-EXCLUDE_DIR_NAMES = {".git", "__pycache__", "node_modules", "state", "tests", "knowledge", ".claude/worktrees"}
+# "design-docs":开发过程文档(spec/tasks,随实施频繁编辑),不属框架分发面——不入 MANIFEST,
+#               init_render 拷贝 docs/ 时同步跳过(两处豁免同名,单一口径)
+EXCLUDE_DIR_NAMES = {".git", "__pycache__", "node_modules", "state", "tests", "knowledge", "design-docs", ".claude/worktrees"}
 EXCLUDE_FILE_NAMES = {".DS_Store"}
 EXCLUDE_SUFFIXES = {".pyc"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

@@ -22,7 +22,7 @@
    "description": "题目唯一 ID(ASCII slug,全库唯一;重复 qid = 结构错误)。惯例:q<序号>-<短语义>,如 q01-managed-agents-price。"
   },
   "type": {
-   "description": "题型。规范枚举 8 类(canonicalType);别名(aliasType)仅为兼容存量数据,经 x-alias-map 归一后按规范题型处理,新题一律写规范名。",
+   "description": "题型。规范枚举 9 类(canonicalType);别名(aliasType)仅为兼容存量数据,经 x-alias-map 归一后按规范题型处理,新题一律写规范名。",
    "anyOf": [
     {
      "$ref": "#/$defs/canonicalType"
@@ -156,10 +156,11 @@
     "aggregation",
     "timeline",
     "exact-verbatim",
+    "keyword-miss",
     "unanswerable",
     "route"
    ],
-   "description": "规范题型枚举(8 类):6 检索题型 + unanswerable 诚实探针 + route 路由入口选择题。逐型出题要点见 evals/question-types.md;route 打分语义与普通题相同(files_read 含 golden 页即命中),其特殊性只在出题面(golden = _map 决策表入口应路由到的页,回归 W-PAGE-2 description 触发质量)。"
+   "description": "规范题型枚举(9 类):7 检索题型 + unanswerable 诚实探针 + route 路由入口选择题。逐型出题要点见 evals/question-types.md;route 与 keyword-miss 打分语义均与普通题相同(files_read 含 golden 页即命中),特殊性只在出题面:route 的 golden = _map 决策表入口应路由到的页(回归 W-PAGE-2 description 触发质量);keyword-miss 的题面刻意避开目标页 title/aliases 用词,靠正文/描述的独有词经 BM25 排名检索(tools/search.py,W-IDX-3)命中——回归精确 grep 命中不了时排名检索的兜底价值。"
   },
   "aliasType": {
    "enum": [
@@ -182,6 +183,6 @@
   "how-do-I": "hello-wiki CI 夹具存量写法:queries/ 缓存命中题,检索形态为单页直达,归一为 single-hop。",
   "route-entry": "route 题型早期草案名。"
  },
- "x-provenance": "Schema 收敛依据:参考实例 newpj4 evals/golden.jsonl(16 题,2026-07-18 三方案横评实测)+ 框架 hello-wiki CI 夹具(tests/hello-wiki/evals/golden.jsonl);题型 6+1+route 见 Spec §11 评测协议。",
+ "x-provenance": "Schema 收敛依据:参考实例 newpj4 evals/golden.jsonl(16 题,2026-07-18 三方案横评实测)+ 框架 hello-wiki CI 夹具(tests/hello-wiki/evals/golden.jsonl);题型 6+1+route 见 Spec §11 评测协议(2026-07-24 追加 keyword-miss 为第 7 检索型,配套 W-IDX-3 排名检索)。",
  "$comment": "形式关键字(additionalProperties/minProperties/maxLength 等)从严存档;执行判定以 tools/eval_retrieval.py --check-golden 为准(部分严约束在执行层降级为 warning,见各字段 description)。"
 }

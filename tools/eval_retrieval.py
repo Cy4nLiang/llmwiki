@@ -99,7 +99,7 @@ def load_jsonl(path: Path) -> tuple[list[dict], list[str]]:
 # 执行口径与 schema 头注一致:结构错误 → exit 2;未知 type(经别名映射后)/ 未知字段 → warning。
 
 CANONICAL_TYPES = ("single-hop", "multi-hop", "comparison", "aggregation",
-                   "timeline", "exact-verbatim", "unanswerable", "route")
+                   "timeline", "exact-verbatim", "keyword-miss", "unanswerable", "route")
 # 别名映射(schema x-alias-map 同源):exact-version = 参考实例 newpj4 存量;
 # how-do-I = hello-wiki 夹具存量(queries 缓存单跳);route-entry = route 早期草案名。
 TYPE_ALIASES = {"exact-version": "exact-verbatim", "how-do-I": "single-hop",

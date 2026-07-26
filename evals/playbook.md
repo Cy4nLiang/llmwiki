@@ -111,7 +111,7 @@
 
 1. 首批 **~10 篇源**走完 ingest、`_map` 决策表回填后,立即建基线(config 填偏——trust_posture/
    facet 设置错误——要靠它早期显形);
-2. 按 `/wiki-golden` + `question-types.md` 出 **≥10 题**:8 题型全覆盖,unanswerable 与 route
+2. 按 `/wiki-golden` + `question-types.md` 出 **≥10 题**:9 题型全覆盖,unanswerable 与 route
    至少各 1;过 `--check-golden`;
 3. 双方案各跑一遍(协议组 + 裸 grep 对照),按本文 §1–§3 记账;
 4. `eval_compare` 出双列报告存 `evals/COMPARISON-<date>.md`,连同 runs/ 一起提交——这就是实例的

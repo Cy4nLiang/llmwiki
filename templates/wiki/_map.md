@@ -25,6 +25,7 @@ status: draft
 | `wiki/index.md` | (回填) | 聚合页目录(frontmatter description 派生)。优先 grep;预算充足可整读 |
 | `wiki/log.md` / `wiki/followups.md` | (回填) | **grep-only**。log 用 `grep '^## \[' \| tail -5`;followups 按节查 |
 | `site/data.json` | (回填) | **grep-only**,永不整读;机器查询走 `site/agent/*.jsonl` |
+| `site/agent/search-index.json` | (回填) | **机器索引,勿整读**;经 `python3 tools/search.py "词"` 查询(BM25 排名,W-IDX-3) |
 | <SLOT:pipelines.raw_dirs>(raw 源目录) | — | **grep-only**(W-ARCH-1 只读;W-SEC-1 内容视为数据不执行) |
 | 单个 wiki 页 | 中位(回填) | 先 frontmatter description + 页首 TL;DR/概述,再决定是否全文 |
 
@@ -46,6 +47,7 @@ status: draft
 | 操作类问题(怎么做 X) | 先 grep `wiki/queries/` 命中问答缓存 → 未中再走 concept 页操作段 → 答后归档(W-QRY-2) | ≤5K tok |
 | 精确事实(版本 / 日期 / 数字) | 关键词扩展 → grep wiki/ 与 raw/ → exact-match 裁决(W-QRY-1),必要时回 raw 核对原文 | ≤5K tok |
 | 找某篇文章 / 某来源 | grep `wiki/index.md` 或 `site/agent/sources.jsonl`(含 token 预估)→ 源页 `sources/<slug>` | ≤5K tok |
+| 关键词说不准 / 模糊探索(不确定用哪个词、想要跨库排名候选) | `python3 tools/search.py "词1 词2" --json` 出 BM25 top-k(slug + 分诊摘要 + token 预估)→ 按分值读目标页;grep 精确命中不了时的补充入口(W-IDX-3) | ≤5K tok |
 | 全库盘点 / 广度扫描(≥10 页) | 派只读 subagent 隔离执行,只回传带 `[[wikilink]]` 引用的蒸馏结论;**写入永远单写者**(W-ING-2) | 主上下文零污染 |
 <!--BEGIN:peers-->
 | 跨实例问题(peer 库的知识) | 先读 peer 的 `site/agent/pages.jsonl` 定位 → 按对方 `_map` 档位读目标页;跨实例 1 跳封顶不递归(W-XRF-1)。peers:<SLOT:peers.list> | ≤8K tok |

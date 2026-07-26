@@ -1,4 +1,4 @@
-# golden 题型手册 — 8 题型逐型出题要点(M3,2026-07-19;any-of 组正式化,2026-07-20)
+# golden 题型手册 — 9 题型逐型出题要点(M3,2026-07-19;any-of 组正式化,2026-07-20;keyword-miss,2026-07-24)
 
 > 与 `evals/golden.schema.json`(结构规范)、`evals/playbook.md`(执行手册)构成评测三件套。
 > 单题结构、分级语义(2=必读 / 1=有帮助)、别名映射表以 schema 为准;本文只管**怎么出好题**。
@@ -9,11 +9,11 @@
 ## 总原则
 
 - **题面不泄底**:question 里不出现 golden 页名/路径;route 题型只给需求描述。
-- **每型至少覆盖一次**;unanswerable 与 route 至少各 1 题;规模 ≥10 题起步(参考实例 newpj4 实测用 16 题)。
+- **每型至少覆盖一次**;unanswerable 与 route 至少各 1 题;有排名检索索引(W-IDX-3)的实例建议 keyword-miss 也至少 1 题;规模 ≥10 题起步(参考实例 newpj4 实测用 16 题)。
 - **golden 是「应读什么」不是「答案是什么」**:答案锚点归 answer_keys;golden 只回答检索路径问题。
 - **exact 类事实只认 exact-match**(W-QRY-1):answer_keys 写精确值或「以 raw 某锚为准」的判定基准。
 
-## 8 题型逐型要点
+## 9 题型逐型要点
 
 ### 1. single-hop — 单页事实
 
@@ -131,6 +131,27 @@
  "golden": {"queries/how-to-add-greeting-language": 2},
  "answer_keys": ["queries 直达", "操作类 how-do-I 入口"],
  "notes": "回归 _map『操作类需求→queries 直达』行 + 该页 description 触发质量"}
+```
+
+### 9. keyword-miss — 精确关键词落空、靠排名检索兜底
+
+- **考什么**:**直接回归 `tools/search.py` BM25 排名检索(W-IDX-3)的兜底价值**。题面刻意避开目标页
+  `title`/`aliases` 的原词,只用近义或描述性措辞,使**精确 grep 命中不了**;能否命中取决于目标页
+  正文/description 里的独有词经语义排名浮出。这是"关键词说不准/模糊探索"入口(`_map` 决策表)存在
+  理由的评测面。
+- **出题要点**:question 里**不出现**目标页 title/aliases 词(比 single-hop 更严——不只是不泄页名,
+  连页的"招牌词"也回避);golden 指向该页 2 级;notes 写明"避开的招牌词是什么、靠哪个正文独有词命中"。
+  校准:出题后自己跑一遍 `python3 tools/search.py "<你设想 agent 会用的词>" --root <实例根>`,确认目标页
+  落在 top-k;落不进说明该页 description/正文缺独有锚点(W-PAGE-2 写偏)→ 修页,不是改题。
+- **打分语义**:与普通题**完全相同**(files_read 含 golden 页即命中),无特殊逻辑;特殊性只在出题面。
+- **样例骨架**:
+
+```json
+{"qid": "q9-keyword-miss-ascii-strip", "type": "keyword-miss",
+ "question": "ascii 档渲染前对显示不了的字符做什么处理?",
+ "golden": {"concepts/localization-fallback": 2},
+ "answer_keys": ["strip_non_ascii"],
+ "notes": "避开招牌词『回退链/本地化』;靠正文独有词 strip_non_ascii / 可打印 ASCII 经 search.py 命中"}
 ```
 
 ## any-of 组(`golden_groups`)—— 多路径等价的正式语法

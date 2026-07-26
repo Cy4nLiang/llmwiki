@@ -3,9 +3,13 @@
 """llmwiki build_site — 站点数据 + agent 机器索引派生(M2,仅 Python 标准库)
 
 从实例的管线 manifest 与 wiki/ 各页 frontmatter 聚合,同一次 build 产出双轨(W-IDX-2):
-  site/data.json            阅读器数据(字段尽量与参考实例 newpj4 兼容)
-  site/agent/sources.jsonl  来源机器索引(每行一条,含 page_tokens 预估)
-  site/agent/pages.jsonl    聚合页 + 查询页机器索引(每行一条,含 tokens 预估)
+  site/data.json                  阅读器数据(字段尽量与参考实例 newpj4 兼容)
+  site/agent/sources.jsonl        来源机器索引(每行一条,含 page_tokens 预估)
+  site/agent/pages.jsonl          聚合页 + 查询页机器索引(每行一条,含 tokens 预估)
+  site/agent/search-index.json    排名检索索引(BM25;W-IDX-3,构建/查询单源 = lib/textindex,
+                                  tools/search.py 消费;覆盖 wiki 根页+五子目录全文)
+  site/agent/graph.json           链接图谱(W-IDX-4;lib/wikigraph 确定性 wikilink 边表,
+                                  节点=非派生非 log 页;供社区/中心/孤立分析,不做语义推断边)
 
 数据来源(全部 config 驱动,移植自参考实例 newpj4 tools/build_site.py 并去 domain 化):
   - 每条管线优先读 state/<name>.manifest.json(fetcher 契约§7:slug/url/title/date/fetched/raw_file);
@@ -44,6 +48,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import fm  # noqa: E402(钉死单源:frontmatter/est_tokens/config 载入)
+from lib import textindex  # noqa: E402(检索索引构建/查询单源,W-IDX-3)
+from lib import wikigraph  # noqa: E402(图谱/派生物判定单源,W-IDX-4)
 
 WIKI_KINDS = ("syntheses", "concepts", "entities", "queries")
 # TL;DR 节:框架冻结骨架段名「## 一句话摘要 / TL;DR」(W-ING-4);容忍任一写法
@@ -430,7 +436,8 @@ def build_jsonl(cfg: dict, articles: list, wiki_pages: dict,
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        description="llmwiki build_site — site/data.json + site/agent/*.jsonl 派生(W-IDX-2)")
+        description="llmwiki build_site — site/data.json + site/agent/*"
+                    "(sources/pages.jsonl 与 search-index.json)派生(W-IDX-2/W-IDX-3)")
     ap.add_argument("--root", default=".", help="实例根目录(含 wiki.config.json;默认 cwd)")
     ap.add_argument("--json", action="store_true", help="机器输出:stdout 打 JSON 摘要")
     args = ap.parse_args(argv)
@@ -460,6 +467,12 @@ def main(argv=None) -> int:
     wiki_pages, wiki_tokens = collect_wiki(wiki, cfg, profile)
     data = build_data(cfg, articles, wiki_pages)
     src_lines, pg_lines = build_jsonl(cfg, articles, wiki_pages, page_tokens, wiki_tokens)
+    # 排名检索索引(W-IDX-3):textindex 自扫 wiki(根页+五子目录全文;collect_wiki 只带
+    # 四类聚合页 frontmatter,覆盖面不同)。放在任何写盘之前:坏文件在此 fail loud 时,
+    # 上一轮 site/ 产物保持完整一致,不留"半新半旧"的窗口。
+    search_index = textindex.build_index(textindex.collect_docs(wiki, profile), profile)
+    # 链接图谱(W-IDX-4):确定性 wikilink 边表(节点=非派生非 log 页);同样先派生后写盘
+    graph = wikigraph.build_graph(wiki)
 
     site = root / "site"
     agent = site / "agent"
@@ -471,6 +484,15 @@ def main(argv=None) -> int:
         agent / "sources.jsonl", ("\n".join(src_lines) + "\n") if src_lines else "")
     outputs["site/agent/pages.jsonl"] = _write_if_changed(
         agent / "pages.jsonl", ("\n".join(pg_lines) + "\n") if pg_lines else "")
+    # 机读专用且体积敏感(全文倒排,与人读 data.json 定位不同):紧凑分隔;
+    # sort_keys 定序 + 无时间戳,保逐字节确定性
+    outputs["site/agent/search-index.json"] = _write_if_changed(
+        agent / "search-index.json",
+        json.dumps(search_index, ensure_ascii=False, sort_keys=True,
+                   separators=(",", ":")) + "\n")
+    outputs["site/agent/graph.json"] = _write_if_changed(
+        agent / "graph.json",
+        json.dumps(graph, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
 
     ok = not problems
     if args.json:
@@ -482,6 +504,9 @@ def main(argv=None) -> int:
                           for n, k, o, c in per_pipeline],
             "wiki_pages": {k: len(v) for k, v in wiki_pages.items()},
             "rows": {"sources.jsonl": len(src_lines), "pages.jsonl": len(pg_lines)},
+            "search": {"docs": search_index["n_docs"],
+                       "terms": len(search_index["postings"])},
+            "graph": {"nodes": graph["n_nodes"], "edges": graph["n_edges"]},
             "outputs": {k: ("wrote" if v else "unchanged") for k, v in outputs.items()},
             "warnings": warnings,
             "problems": problems,
@@ -495,8 +520,10 @@ def main(argv=None) -> int:
             " / ".join("%s %d" % (k, len(v)) for k, v in wiki_pages.items())))
         for path, changed in outputs.items():
             print("%s %s" % (path, "wrote" if changed else "unchanged"))
-        print("agent index: sources.jsonl %d rows, pages.jsonl %d rows" %
-              (len(src_lines), len(pg_lines)))
+        print("agent index: sources.jsonl %d rows, pages.jsonl %d rows, "
+              "search-index %d docs / %d terms, graph %d nodes / %d edges" %
+              (len(src_lines), len(pg_lines), search_index["n_docs"],
+               len(search_index["postings"]), graph["n_nodes"], graph["n_edges"]))
         for w in warnings:
             print("警告: %s" % w)
         for p in problems:

@@ -1,6 +1,6 @@
 ---
 name: wiki-golden
-description: 当实例要建立或修订评测基线——首批 ~10 源落库后、wiki-upgrade 门禁前后、结构性重构(拆页/分片)后,或用户说「建 golden」「/wiki-golden」「出评测题」时触发。引导编写 evals/golden.jsonl:8 题型(6 检索 + unanswerable + route)、golden{2,1} 分级、any-of 校准、同库裸 grep 对照组,并固化「grep 不算 read」记账口径;写完过 eval_retrieval --check-golden 机检。
+description: 当实例要建立或修订评测基线——首批 ~10 源落库后、wiki-upgrade 门禁前后、结构性重构(拆页/分片)后,或用户说「建 golden」「/wiki-golden」「出评测题」时触发。引导编写 evals/golden.jsonl:9 题型(7 检索〔含 keyword-miss〕 + unanswerable + route)、golden{2,1} 分级、any-of 校准、同库裸 grep 对照组,并固化「grep 不算 read」记账口径;写完过 eval_retrieval --check-golden 机检。
 ---
 
 # wiki-golden — golden 评测集编写向导
@@ -37,7 +37,7 @@ python3 tools/eval_retrieval.py --check-golden evals/golden.jsonl --root .
 - **1 = 有帮助**:读了更稳但可被替代;
 - golden 可以含 raw 文件本身——exact-verbatim 题**必须**含(精确条目以 raw 为准,W-QRY-1)。
 
-## 题型:8 类(6 检索 + unanswerable + route)
+## 题型:9 类(7 检索 + unanswerable + route)
 <a id="question-types"></a>
 
 | 题型 | 考什么 | 出题要点 |
@@ -48,6 +48,7 @@ python3 tools/eval_retrieval.py --check-golden evals/golden.jsonl --root .
 | aggregation | 跨源汇总(「总共/都有哪些」) | 回归「一切汇总皆派生」(W-IDX-1):应命中综合页而非扫源页 |
 | timeline | 演进时序 | golden 指时间线页;answer_keys 写演进链(A→B→C) |
 | exact-verbatim | 逐字精确条目(版本/原文) | golden 必含 raw 文件;回归回 raw exact-match(W-QRY-1);存量别名 `exact-version` |
+| keyword-miss | 精确关键词落空、靠排名检索兜底 | 题面避开目标页 title/aliases 招牌词,靠正文独有词经 `tools/search.py`(W-IDX-3)命中;打分同普通题;出题后自跑 search.py 校准 hit@k |
 | **unanswerable**(诚实探针) | 库范围外的问题 | 正确行为 = 按降级链声明「未收录」(W-QRY-3),额外探索越少越好;编造 = 直接判死。golden 空 `{}`;**answer_keys 写「未收录声明」锚点关键词**(≤20 字符,勿写整句)——打分器锚点匹配自动判诚实,空锚点回退旧启发式 |
 | **route**(路由入口选择题) | 「此问题应命中 _map 决策表哪个入口 / 哪页 description」 | 直接回归 description 触发质量(W-PAGE-2);golden = 应命中页,answer_keys = 入口名/触发词;打分语义与普通题相同 |
 
