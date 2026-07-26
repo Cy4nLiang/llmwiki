@@ -45,10 +45,25 @@
            单源)逐字节等价;snapshot_manifest 镜像同法比对(upgrade.py 头注声明的
            旧版回退设计,防两侧口径漂移);
   (i) extras 冒烟:serve.py 子进程起随机高位口 → GET /api/status 合法 JSON 且含
-      pipelines 段 → 关停;i18n_link.py 未配置语言对 exit 2;
+      pipelines 段 → 关停;i18n_link.py 未配置语言对 exit 2;hooks 两脚本(草稿投递 +
+      sync pending +1 + 幂等 + exit 恒 0 回归锁);**mcp_server stdio 握手**——一次性喂完
+      NDJSON 请求再统一收帧:帧数 == 有 id 请求数(通知不回帧)、protocolVersion 常量钉死、
+      tools/list 恰 4 工具、wiki_map/search/page/capture 各自断言(max_tokens 硬承诺、
+      路径穿越被拒、重投幂等、sync 报 pending)、wiki/ 零改动、未知工具/方法走 JSON-RPC 分层;
   (j) manual 哨兵:base sync status 不再出「未声明适配器」警告(guide adapter=manual),
       peers 段与 framework_version 进 status --json;mf 实例 peers[0](hub→base)
       可达、pages.jsonl 非空、报版本 skew(base 已升 NEXT_V)。
+  (l) W-ING-5 supersession 演进链:注入合法双向对 + 旧页横幅 → lint 零 lineage 告警、
+      contradictions.md「演进链」分节渲染该对、派生幂等(written==[]);删对侧字段造单向破损
+      → warning ≥1(errors 仍 0);YAML 换行块列表写法(解析器静默丢值)被点名报「值为空」;
+      两态均断言 ⚠️ 条目区 `- [[` 仍恰 1 条(演进链不串台矛盾区);
+  (n) S5 冷启动 bootstrap:bootstrap_scan 只读扫宿主 → state/bootstrap-candidates.json;
+      对框架仓自身扫出 ≥10 候选(验收面)、两次运行产物与 --json 逐字节一致、宿主树零
+      写入、实例侧只新增 state/bootstrap-candidates.json 一个文件(W-ARCH-2 写边界)、
+      git 缺席走降级分支不报错、wiki-bootstrap 向导已渲进实例 .claude/skills/;
+  (p) W-DIST-1 分发壳:框架仓 .claude-plugin/{marketplace,plugin}.json 合法 JSON、版本
+      三方同步(plugin==marketplace==framework/VERSION)、skills 指向仓内 .claude/skills/
+      三向导可达、MANIFEST 归 meta 档(装框架分发壳,不渲染进实例)。
 
 退出码:0 = 全部断言通过;1 = 任一断言失败(fail-fast,失败后保留 tmp 便于排查);
         2 = 用法/环境错误(夹具或框架文件缺失)。
@@ -86,6 +101,14 @@ ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 EXPECT_SUMMARY = {"n": 3, "precision": 0.8333, "recall": 0.8889, "problem_q": 0}
 PENDING_RAW = "raw/inbox/2026-07-15-pitfall-timezone-greeting.md"
 PENDING_SRC = "wiki/sources/2026-07-15-pitfall-timezone-greeting.md"
+
+# MCP 协议版本:**故意**在 CI 侧写字面量,与 extras/mcp_server.py 的常量双份钉死
+# (importlib 读它的常量就测不出「协议被无声改动」了;与 CUR_V 从 VERSION 派生的思路相反)
+MCP_PROTOCOL = "2025-11-25"
+
+# 随实例分发的工作流 skill 模板下限集(templates/skills/<name>/SKILL.md);新增 skill 在此登记
+EXPECTED_SKILLS = {"wiki-ingest", "wiki-query", "wiki-lint", "wiki-sync",
+                   "wiki-bootstrap", "wiki-research"}
 
 # lint 中必须为 0 的 error 级检查项(soft/warning 项不在此列)
 ZERO_ERROR_CHECKS = ("broken_links", "fm_required", "fm_drift", "map_budget",
@@ -198,8 +221,11 @@ def derived_paths(inst: Path) -> list[Path]:
     fixed = [inst / "site" / "data.json",
              inst / "site" / "agent" / "sources.jsonl",
              inst / "site" / "agent" / "pages.jsonl",
+             inst / "site" / "agent" / "search-index.json",
+             inst / "site" / "agent" / "graph.json",
              inst / "wiki" / "index.md",
-             inst / "wiki" / "contradictions.md"]
+             inst / "wiki" / "contradictions.md",
+             inst / "wiki" / "backlinks.md"]
     return fixed + sorted((inst / "wiki").glob("index-sources*.md"))
 
 
@@ -231,6 +257,19 @@ def phase_render(ci: CI, cfg_path: Path, inst: Path, label: str) -> None:
              "overlay 文件数异常:%d" % n)
     ci.run_ok("%s lint --check-slots" % label,
               [PY, inst / "tools" / "lint_wiki.py", "--check-slots", "--target", inst])
+    # build_plan 自动枚举 templates/skills/ → 实例 .claude/skills/(零代码接入)。
+    # 上界按框架实际持有的模板集(新增 skill 天然被覆盖),下界用 EXPECTED_SKILLS 钉死——
+    # 否则模板被误删时 want 自己缩小,断言会同义反复地通过。
+    want = sorted(p.parent.name for p in
+                  (FW / "templates" / "skills").glob("*/SKILL.md"))
+    got = sorted(p.parent.name for p in
+                 (inst / ".claude" / "skills").glob("*/SKILL.md"))
+    ci.check("%s templates/skills 全部渲进实例 .claude/skills(%d 个:%s)"
+             % (label, len(want), ", ".join(want)),
+             bool(want) and set(want) <= set(got), "want=%s got=%s" % (want, got))
+    ci.check("%s 框架持有全部预期 skill 模板(下限集,防误删静默通过)" % label,
+             EXPECTED_SKILLS <= set(want),
+             "缺:%s" % sorted(EXPECTED_SKILLS - set(want)))
 
 
 def phase_build(ci: CI, inst: Path, label: str) -> dict:
@@ -260,6 +299,45 @@ def phase_build(ci: CI, inst: Path, label: str) -> dict:
     snap2 = snapshot(derived_paths(inst))
     diff = [k for k in snap if snap.get(k) != snap2.get(k)]
     ci.check("%s 派生产物逐字节相同(确定性)" % label, not diff, "漂移:%s" % diff)
+
+    # backlinks.md 正向:已知有机链接 greeter-service → greeting-protocol 的反向应正确渲染
+    bltxt = (inst / "wiki" / "backlinks.md").read_text(encoding="utf-8")
+    ci.check("%s backlinks.md 正确渲染已知反链(greeting-protocol ← greeter-service)" % label,
+             any(ln.startswith("- [[concepts/greeting-protocol]] ←")
+                 and "[[entities/greeter-service]]" in ln for ln in bltxt.splitlines()),
+             "\n".join(ln for ln in bltxt.splitlines()
+                       if "greeting-protocol]] ←" in ln)[:400])
+
+    # search.py 冒烟(W-IDX-3):关键词命中 + 两次查询逐位一致 + 无索引清晰 exit 2
+    search = inst / "tools" / "search.py"
+    s1 = ci.run_json("%s search #1" % label,
+                     [PY, search, "问候", "协议", "--root", inst, "--json"])
+    hits = [h["slug"] for h in s1.get("hits", [])]
+    ci.check("%s search 命中 concepts/greeting-protocol" % label,
+             "concepts/greeting-protocol" in hits, "hits=%s" % hits)
+    s2 = ci.run_json("%s search #2(重跑)" % label,
+                     [PY, search, "问候", "协议", "--root", inst, "--json"])
+    ci.check("%s search 两次查询逐位一致(确定性)" % label, s1 == s2,
+             "s1!=s2")
+    ci.run_ok("%s search 无索引 → exit 2" % label,
+              [PY, search, "任意", "--root", inst.parent], want_rc=2)
+    # 损坏索引(顶层形状合法、内层各类手编损坏)→ 清晰 exit 2 不裸崩(W-IDX-3 装载广捕兜底)
+    real = json.loads((inst / "site" / "agent" / "search-index.json").read_text(encoding="utf-8"))
+    doc_id_bad = dict(real)
+    doc_id_bad["postings"] = {"zzz": [[10 ** 9, 1.0]]}          # doc_id 越界 → IndexError
+    docs_bad = dict(real)                                        # docs 记录非 dict → AttributeError
+    docs_bad.update(n_docs=1, doc_order=["s"], docs={"s": "CORRUPT"}, postings={"zzz": [[0, 1.0]]})
+    zero_bad = dict(real)                                        # k1=0 + 权重 0 → ZeroDivisionError
+    zero_bad.update(k1=0.0, n_docs=1, doc_order=["s"], postings={"zzz": [[0, 0.0]]},
+                    docs={"s": {"dl": 0.0, "title": "", "description": "", "tokens": 1}})
+    for i, (cname, bad) in enumerate((("doc_id 越界", doc_id_bad), ("docs 记录非 dict", docs_bad),
+                                      ("k1=0 算术退化", zero_bad))):
+        probe = inst.parent / ("_search_probe_%s_%d" % (label, i))  # tmp 下,不进实例 → 不被 lint
+        (probe / "site" / "agent").mkdir(parents=True, exist_ok=True)
+        (probe / "site" / "agent" / "search-index.json").write_text(
+            json.dumps(bad, ensure_ascii=False), encoding="utf-8")
+        ci.run_ok("%s search 损坏索引(%s)→ exit 2 不裸崩" % (label, cname),
+                  [PY, search, "zzz", "--root", probe], want_rc=2)
     return b1
 
 
@@ -602,6 +680,219 @@ def build_fw_next(ci: CI, tmp: Path) -> Path:
     return fwn
 
 
+def phase_keyword_miss(ci: CI, base: Path, tmp: Path) -> None:
+    """keyword-miss 第 9 题型(W-IDX-3):golden 过 --check-golden 零 warning + search hit@3。
+
+    题面刻意避开目标页 title/aliases 招牌词,靠正文独有词经 BM25 命中(精确 grep 会漏);
+    tmp 现场造 golden(不动 hello-wiki 既有 golden 与 (e) 的 EXPECT_SUMMARY)。query 词均
+    经离线校验命中 top-3(见各 note)。"""
+    print("\n[base/k] keyword-miss 第 9 题型:--check-golden 零 warning + search hit@3")
+    ev = base / "tools" / "eval_retrieval.py"
+    search = base / "tools" / "search.py"
+    # query 均为「题面可自然抽出的词」,刻意避开目标页 title/aliases 招牌词 *和* 答案原词
+    # (keys),以真正演示 keyword-miss:agent 用自己的措辞检索,grep 精确匹配可能漏、BM25
+    # 靠正文/描述语义仍排进 top-3。三条离线校验命中 top-3(KM1/KM2 #1、KM3 #2)。
+    cases = [
+        {"qid": "km1-ascii-render", "page": "concepts/localization-fallback",
+         "q": "ascii 档渲染前对显示不了的字符做什么处理?",
+         "query": ["ascii", "字符", "渲染"], "keys": ["strip_non_ascii"],
+         "note": "题面派生词(避标题『本地化回退链』、避答案 strip_non_ascii);靠正文语义 BM25 命中"},
+        {"qid": "km2-startup-load", "page": "entities/greeter-service",
+         "q": "服务启动时只加载哪些登记过的语言资源?",
+         "query": ["启动", "加载", "资源"], "keys": ["registry.txt"],
+         "note": "题面派生词(避标题『greeter 服务』);靠正文『启动时只加载』命中"},
+        {"qid": "km3-langcode-scheme", "page": "concepts/greeting-protocol",
+         "q": "语言码用什么命名规范?",
+         "query": ["语言码", "命名", "规范"], "keys": ["BCP 47"],
+         "note": "题面派生词(避标题『问候协议』、避答案『BCP 47』);靠正文语义命中"},
+    ]
+    gpath = tmp / "keyword-miss-golden.jsonl"
+    gpath.write_text("\n".join(json.dumps(
+        {"qid": c["qid"], "type": "keyword-miss", "question": c["q"],
+         "golden": {c["page"]: 2}, "answer_keys": c["keys"], "notes": c["note"]},
+        ensure_ascii=False) for c in cases) + "\n", encoding="utf-8")
+    chk = ci.run_json("keyword-miss golden --check-golden --json",
+                      [PY, ev, "--check-golden", gpath, "--root", base, "--json"])
+    ci.check("keyword-miss 被识别为规范题型(零 error 零 warning)",
+             chk.get("ok") is True and chk.get("errors") == []
+             and chk.get("warnings") == [] and chk.get("n_questions") == 3,
+             json.dumps(chk, ensure_ascii=False)[:500])
+    for c in cases:
+        res = ci.run_json("km hit@3: %s" % c["qid"],
+                          [PY, search, *c["query"], "--root", base, "-k", "3", "--json"])
+        top3 = [h["slug"] for h in res.get("hits", [])]
+        ci.check("%s:题面避招牌词,golden 页 %s ∈ search top-3" % (c["qid"], c["page"]),
+                 c["page"] in top3, "query=%s top3=%s" % (c["query"], top3))
+
+
+def phase_orphan(ci: CI, base: Path, tmp: Path) -> None:
+    """W-IDX-4/W-PAGE-3:注入无入链孤儿页 → lint orphans 计数 +1(warning);
+    backlinks.md 派生不把孤儿"救活"。probe = base 的独立拷贝,不动 base。"""
+    print("\n[base/o] 孤儿页注入:lint orphans +1(warning);backlinks 不救孤儿")
+    probe = tmp / "orphan-probe"
+    shutil.copytree(str(base), str(probe))
+    orphan = probe / "wiki" / "concepts" / "orphan-probe.md"
+    orphan.write_text(
+        "---\ntitle: 孤儿探针\n"
+        "description: \"CI 注入:无入链孤儿概念页,验证 lint orphans 检查与 backlinks 不救孤儿\"\n"
+        "type: concept\ncreated: 2026-07-16\nupdated: 2026-07-16\ntags: [probe]\nstatus: draft\n---\n\n"
+        "# 孤儿探针\n\n无人引用本页(无入链)。\n", encoding="utf-8")
+    ci.run_ok("orphan-probe build_site", [PY, probe / "tools" / "build_site.py", "--root", probe])
+    ci.run_ok("orphan-probe build_index", [PY, probe / "tools" / "build_index.py", "--root", probe])
+    ld = ci.run_json("orphan-probe lint --json",
+                     [PY, probe / "tools" / "lint_wiki.py", "--root", probe, "--json"])
+    orph = {c["id"]: c for c in ld.get("checks", [])}.get("orphans", {})
+    # probe = base + 恰 1 孤儿:count==1 同时证明"注入被检出"与"base 零孤儿"(base 贡献 0)
+    ci.check("注入孤儿 → orphans 恰 1 且为 warning、指向 concepts/orphan-probe",
+             orph.get("count") == 1 and orph.get("severity") == "warning"
+             and "concepts/orphan-probe" in (orph.get("items") or [""])[0],
+             json.dumps(orph, ensure_ascii=False)[:400])
+    # backlinks.md 已随 build_index 重派生,但孤儿页无入链 → 不出现在 backlinks、也未被"救活"
+    bltxt = (probe / "wiki" / "backlinks.md").read_text(encoding="utf-8")
+    ci.check("backlinks.md 未把孤儿页救活(其不在反链中、仍计为孤儿)",
+             "[[concepts/orphan-probe]] ←" not in bltxt and orph.get("count") == 1)
+
+
+def phase_secscan(ci: CI, base: Path, tmp: Path) -> None:
+    """W-SEC-3 内容脱敏:注入含假 token 的页 → lint 报 warning(exit 仍 0,soft);
+    加 `secscan:allow` 标注 → 不再报。假 token **运行时拼接构造**,仓内零 token 样式串
+    (CONTRIBUTING §58);probe = base 独立拷贝。"""
+    print("\n[base/s] W-SEC-3 脱敏扫描:假 token → warning(exit 0);secscan:allow 豁免")
+    probe = tmp / "secscan-probe"
+    shutil.copytree(str(base), str(probe))
+    fake = "AKIA" + "Z" * 16   # 运行时构造:源码/仓内不出现完整 token 样式串
+    tools = probe / "tools"
+    page = probe / "wiki" / "concepts" / "secscan-probe.md"
+    hdr = ("---\ntitle: 脱敏探针\ndescription: \"CI 注入:W-SEC-3 脱敏扫描验证\"\n"
+           "type: concept\ncreated: 2026-07-16\nupdated: 2026-07-16\ntags: [probe]\n"
+           "status: draft\n---\n\n# 脱敏探针\n\n")
+
+    def rebuild_lint(name: str) -> dict:
+        ci.run_ok("%s build_site" % name, [PY, tools / "build_site.py", "--root", probe])
+        ci.run_ok("%s build_index" % name, [PY, tools / "build_index.py", "--root", probe])
+        return ci.run_json("%s lint --json" % name,
+                           [PY, tools / "lint_wiki.py", "--root", probe, "--json"])
+
+    page.write_text(hdr + "泄漏样例:aws_key = " + fake + "\n", encoding="utf-8")
+    d = rebuild_lint("secscan 命中")
+    sec = {c["id"]: c for c in d.get("checks", [])}.get("content_secrets", {})
+    ci.check("含假 token → W-SEC-3 warning(≥1、指向探针页、值未回显)、exit 0(soft)",
+             d.get("errors") == 0 and sec.get("severity") == "warning"
+             and sec.get("count", 0) >= 1
+             and any("concepts/secscan-probe" in it for it in sec.get("items", []))
+             and not any(fake in it for it in sec.get("items", [])),
+             json.dumps(sec, ensure_ascii=False)[:400])
+
+    page.write_text(hdr + "<!-- secscan:allow -->\n示范:aws_key = " + fake + "\n", encoding="utf-8")
+    d2 = rebuild_lint("secscan allow")
+    sec2 = {c["id"]: c for c in d2.get("checks", [])}.get("content_secrets", {})
+    ci.check("secscan:allow 豁免下一行 → W-SEC-3 零命中(同时证 base 无其他密钥)",
+             sec2.get("count") == 0, json.dumps(sec2, ensure_ascii=False)[:300])
+
+
+def phase_lineage(ci: CI, base: Path, tmp: Path) -> None:
+    """(l) W-ING-5 supersession 演进链:合法对 → 零告警 + contradictions 演进链分节正确;
+    单向破损 / YAML 块列表写法 → warning(exit 仍 0)。全程护住「⚠️ 条目恰 1 条」口径——
+    演进链条目刻意不以 `- [[` 起头,否则会撞 assert_contradictions 的计数。probe = base 独立拷贝。"""
+    print("\n[base/l] W-ING-5 演进链:合法对零告警 / 单向破损 warning;⚠️ 区不被污染")
+    probe = tmp / "lineage-probe"
+    shutil.copytree(str(base), str(probe), symlinks=True)
+    tools = probe / "tools"
+    old_p = probe / "wiki" / "concepts" / "greeting-protocol.md"
+    new_p = probe / "wiki" / "concepts" / "greeting-protocol-v2.md"
+
+    def rebuild_lint(name: str) -> dict:
+        ci.run_ok("%s build_index" % name, [PY, tools / "build_index.py", "--root", probe])
+        return ci.run_json("%s lint --json" % name,
+                           [PY, tools / "lint_wiki.py", "--root", probe, "--json"])
+
+    def lineage_of(d: dict) -> dict:
+        return {c["id"]: c for c in d.get("checks", [])}.get("lineage", {})
+
+    def warn_free_contradictions() -> tuple:
+        txt = (probe / "wiki" / "contradictions.md").read_text(encoding="utf-8")
+        return txt, [ln for ln in txt.splitlines() if ln.startswith("- [[")]
+
+    # ---- 态一:合法双向对 + 旧页横幅 ----------------------------------------
+    t = old_p.read_text(encoding="utf-8").replace(
+        "type: concept", "type: concept\nsuperseded_by: concepts/greeting-protocol-v2", 1)
+    head, sep, rest = t.partition("\n# ")
+    body_head, nl, body_rest = rest.partition("\n")
+    old_p.write_text(head + sep + body_head + nl
+                     + "\n> **已被取代**:本页结论已由 [[concepts/greeting-protocol-v2]] "
+                       "取代(W-ING-5);保留供溯源。\n" + body_rest, encoding="utf-8")
+    new_p.write_text(
+        "---\ntitle: 打招呼协议 v2\n"
+        "description: \"打招呼协议第二版口径:取代初版,查最新问候规则读本页(CI 注入)。\"\n"
+        "type: concept\ncreated: 2026-07-16\nupdated: 2026-07-16\nstatus: active\n"
+        "tags: [probe]\nsupersedes: concepts/greeting-protocol\n---\n\n"
+        "# 打招呼协议 v2\n\n取代 [[concepts/greeting-protocol]] 的新口径。\n",
+        encoding="utf-8")
+    d1 = rebuild_lint("lineage 合法对")
+    lin1 = lineage_of(d1)
+    ci.check("合法双向对 + 旧页横幅 → W-ING-5 零告警、errors 仍 0",
+             d1.get("errors") == 0 and lin1.get("count") == 0
+             and lin1.get("severity") == "warning",
+             json.dumps(lin1, ensure_ascii=False)[:400])
+    ctxt, marks = warn_free_contradictions()
+    ci.check("contradictions.md 演进链分节渲染该对(且标题含计数)",
+             "## 演进链 / Lineage (1)" in ctxt
+             and "- 旧 [[concepts/greeting-protocol]] → 新 [[concepts/greeting-protocol-v2]]"
+             in ctxt, ctxt[-500:])
+    ci.check("演进链未污染 ⚠️ 区:`- [[` 条目仍恰 1 条(assert_contradictions 口径)",
+             len(marks) == 1, "得到 %d 条:%s" % (len(marks), marks))
+    rep = ci.run_json("lineage build_index --json 复跑",
+                      [PY, tools / "build_index.py", "--root", probe, "--json"])
+    ci.check("演进链派生幂等:内容未变则 written == [] 且 lineage 计数入 --json",
+             rep.get("written") == [] and rep.get("lineage") == 1,
+             json.dumps({k: rep.get(k) for k in ("written", "lineage")}, ensure_ascii=False))
+
+    # ---- 态二:单向破损(删掉新页的 supersedes)-------------------------------
+    new_p.write_text(new_p.read_text(encoding="utf-8").replace(
+        "supersedes: concepts/greeting-protocol\n", "", 1), encoding="utf-8")
+    d2 = rebuild_lint("lineage 单向破损")
+    lin2 = lineage_of(d2)
+    ci.check("单向破损 → W-ING-5 warning ≥1、指向破损页、errors 仍 0(soft 不改 exit)",
+             d2.get("errors") == 0 and lin2.get("severity") == "warning"
+             and lin2.get("count", 0) >= 1
+             and any("concepts/greeting-protocol" in it and "单向" in it
+                     for it in lin2.get("items", [])),
+             json.dumps(lin2, ensure_ascii=False)[:400])
+    _c2, marks2 = warn_free_contradictions()
+    ci.check("破损态下 ⚠️ 区仍恰 1 条(演进链与矛盾区互不串台)",
+             len(marks2) == 1, "得到 %d 条:%s" % (len(marks2), marks2))
+
+    # ---- 态二b:横幅误用 ⚠️ → 必须报警(否则旧页被 contradiction_lines 收进 ⚠️ 区)----
+    new_p.write_text(new_p.read_text(encoding="utf-8").replace(
+        "type: concept", "type: concept\nsupersedes: concepts/greeting-protocol", 1),
+        encoding="utf-8")                       # 先修回双向,隔离出「仅横幅误用」这一个变量
+    old_p.write_text(old_p.read_text(encoding="utf-8").replace(
+        "> **已被取代**", "> **⚠️ 已被取代**", 1), encoding="utf-8")
+    d2b = rebuild_lint("lineage 横幅误用 ⚠️")
+    lin2b = lineage_of(d2b)
+    ci.check("横幅误用 ⚠️ → W-ING-5 报警(演进≠矛盾;否则旧页静默进未决矛盾区)",
+             d2b.get("errors") == 0
+             and any("误用 ⚠️" in it for it in lin2b.get("items", [])),
+             json.dumps(lin2b, ensure_ascii=False)[:400])
+    _c2b, marks2b = warn_free_contradictions()
+    ci.check("误用 ⚠️ 的横幅确实会污染 ⚠️ 区(证明该警报守的是真不变量:`- [[` 变 2 条)",
+             len(marks2b) == 2, "得到 %d 条:%s" % (len(marks2b), marks2b))
+    old_p.write_text(old_p.read_text(encoding="utf-8").replace(
+        "> **⚠️ 已被取代**", "> **已被取代**", 1), encoding="utf-8")   # 还原横幅
+
+    # ---- 态三:YAML 块列表写法(解析器静默丢值)必须被点名 ----------------------
+    kept = [ln for ln in new_p.read_text(encoding="utf-8").split("\n")
+            if not ln.startswith("supersedes:")]   # 先清既有声明:fm 逐行覆盖,两个同名键会互相遮蔽
+    new_p.write_text("\n".join(kept).replace(
+        "type: concept", "type: concept\nsupersedes:\n  - concepts/greeting-protocol", 1),
+        encoding="utf-8")
+    d3 = rebuild_lint("lineage 块列表写法")
+    lin3 = lineage_of(d3)
+    ci.check("换行 `- a` 块写法被静默丢值 → 明确报「值为空」并提示单行写法",
+             any("值为空" in it and "supersedes" in it for it in lin3.get("items", [])),
+             json.dumps(lin3, ensure_ascii=False)[:400])
+
+
 def phase_upgrade(ci: CI, tmp: Path, base: Path) -> Path:
     fwn = build_fw_next(ci, tmp)
     upgrade = base / "tools" / "upgrade.py"    # 实例自持有的升级器(frozen 拷贝)
@@ -832,6 +1123,249 @@ def phase_extras(ci: CI, base: Path) -> None:
              rc == 2 and "未配置" in (out + err),
              "rc=%s\nstderr(tail): %s" % (rc, err[-300:]))
 
+    # ---- S3 hooks 冒烟(capture_draft / boot_reminder;opt-in,extras 可选层)----
+    cap = FW / "extras" / "hooks" / "capture_draft.py"
+    boot = FW / "extras" / "hooks" / "boot_reminder.py"
+    # boot_reminder(SessionStart,只读):喂假 JSON → 合法 JSON + additionalContext 含 _map
+    def _pipe(cmd, stdin_text):
+        r = subprocess.run([str(c) for c in cmd], input=stdin_text,
+                           capture_output=True, text=True, env=ENV)
+        return r.returncode, r.stdout, r.stderr
+    brc, bout, _ = _pipe([PY, boot, "--root", base], '{"hook_event_name":"SessionStart"}')
+    try:
+        bj = json.loads(bout)
+    except json.JSONDecodeError:
+        bj = {}
+    ci.check("boot_reminder → 合法 JSON,additionalContext 含 _map(exit 0)",
+             brc == 0 and "_map" in bj.get("hookSpecificOutput", {}).get("additionalContext", ""),
+             "rc=%s out=%r" % (brc, bout[:200]))
+    # 非实例静默:root 指向框架根(无 wiki/_map.md 实例)→ exit 0 空输出
+    nrc, nout, _ = _pipe([PY, boot, "--root", FW], "{}")
+    ci.check("boot_reminder 非实例 → exit 0 空输出", nrc == 0 and nout.strip() == "",
+             "rc=%s out=%r" % (nrc, nout[:120]))
+    # capture_draft(SessionEnd/Stop,写 inbox):用 probe 拷贝,避免动 base
+    probe = base.parent / "hooks-probe"
+    shutil.copytree(str(base), str(probe))
+    def _pending(root):
+        d = ci.run_json("hooks pending @%s" % root.name,
+                        [PY, root / "tools" / "sync.py", "status", "--root", root, "--json"])
+        return sum(p.get("pending_count", 0) for p in d.get("pipelines", []))
+    before = _pending(probe)
+    drc, dout, _ = _pipe([PY, cap, "--root", probe, "--date", "2026-07-16",
+                          "--session-id", "citest", "--json"],
+                         '{"session_id":"citest","hook_event_name":"Stop"}')
+    dj = json.loads(dout) if dout.strip().startswith("{") else {}
+    draft = probe / "raw" / "inbox" / "2026-07-16-session-draft-citest.md"
+    ci.check("capture_draft → 投递 kind:draft 草稿(不写 wiki/),exit 0",
+             drc == 0 and dj.get("drafted") and draft.is_file()
+             and "kind: draft" in draft.read_text(encoding="utf-8")
+             and not list((probe / "wiki").rglob("*session-draft*")),
+             "rc=%s dj=%s" % (drc, dout[:200]))
+    ci.check("capture_draft 后 sync pending +1", _pending(probe) == before + 1,
+             "before=%d after=%d" % (before, _pending(probe)))
+    # 幂等:同 session 重跑不再投递
+    drc2, dout2, _ = _pipe([PY, cap, "--root", probe, "--date", "2026-07-16",
+                            "--session-id", "citest", "--json"], "{}")
+    dj2 = json.loads(dout2) if dout2.strip().startswith("{") else {}
+    ci.check("capture_draft 同 session 幂等(重跑 drafted=null)",
+             drc2 == 0 and dj2.get("drafted") is None, dout2[:200])
+    # exit 恒 0 回归锁(t7-robust P1-1/P2-2):畸形 payload(cwd 非字符串)+ 未知参数不得打断会话
+    for tool, tname in ((cap, "capture_draft"), (boot, "boot_reminder")):
+        r1, _, _ = _pipe([PY, tool], '{"cwd":12345}')            # cwd 非字符串(不可信 stdin)
+        r2, _, _ = _pipe([PY, tool, "--nonsense-flag"], "{}")    # 未知参数(hook 命令误配)
+        r3, _, _ = _pipe([PY, tool, "--root"], "{}")             # 已知选项缺值(argparse usage 错)
+        ci.check("%s:非字符串 cwd + 未知参数 + 缺值均 exit 0(不打断会话)" % tname,
+                 r1 == 0 and r2 == 0 and r3 == 0, "rc1=%s rc2=%s rc3=%s" % (r1, r2, r3))
+
+    # ---- S8 MCP server 冒烟(stdio JSON-RPC;协议版本双份钉死,故意写字面量)----
+    print("\n[base/i2] mcp_server:initialize 握手 + tools/list 4 工具 + 各工具 + 写边界")
+    mcp = FW / "extras" / "mcp_server.py"
+    mprobe = base.parent / "mcp-probe"                # wiki_capture 会写 raw/:不动 base
+    shutil.copytree(str(base), str(mprobe), symlinks=True)
+    wiki_before = tree_state(mprobe / "wiki")
+    reqs = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+         "params": {"protocolVersion": MCP_PROTOCOL, "capabilities": {},
+                    "clientInfo": {"name": "run_ci", "version": "0"}}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},   # notification:不回帧
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+         "params": {"name": "wiki_map", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+         "params": {"name": "wiki_search", "arguments": {"query": "问候", "k": 3}}},
+        {"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+         "params": {"name": "wiki_page", "arguments": {
+             "slug": "greeting-protocol", "mode": "full", "max_tokens": 40}}},
+        {"jsonrpc": "2.0", "id": 6, "method": "tools/call",
+         "params": {"name": "wiki_page", "arguments": {"slug": "../../wiki.config"}}},
+        {"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+         "params": {"name": "wiki_capture", "arguments": {
+             "title": "CI 投递探针", "slug": "mcp-ci-probe", "kind": "pitfall"}}},
+        {"jsonrpc": "2.0", "id": 8, "method": "tools/call",
+         "params": {"name": "wiki_capture", "arguments": {
+             "title": "CI 投递探针", "slug": "mcp-ci-probe", "kind": "pitfall"}}},
+        {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+         "params": {"name": "no_such_tool", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 10, "method": "no/such/method"},
+    ]
+    stdin_text = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in reqs)
+    # 一次性喂完再统一收帧:communicate(timeout=) 同时抽干两管,无死锁、无需线程
+    proc = subprocess.Popen([str(PY), str(mcp), "--root", str(mprobe)],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                            env={**ENV, "PYTHONUNBUFFERED": "1"})
+    try:
+        m_out, m_err = proc.communicate(stdin_text, timeout=180)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        m_out, m_err = proc.communicate()
+        ci.check("mcp_server 在超时内完成握手(stdin EOF 后退出)", False, m_err[-300:])
+    frames, bad = [], None
+    for ln in (m_out or "").splitlines():
+        if not ln.strip():
+            continue
+        try:
+            frames.append(json.loads(ln))
+        except json.JSONDecodeError:
+            bad = ln[:200]
+    by_id = {f.get("id"): f for f in frames}
+    ci.check("stdio 纯协议通道:每行均为合法 JSON-RPC 帧、帧数 == 有 id 请求数(通知不回帧)、rc=0",
+             bad is None and len(frames) == 10 and proc.returncode == 0,
+             "rc=%s frames=%d bad=%r stderr(tail)=%s"
+             % (proc.returncode, len(frames), bad, (m_err or "")[-200:]))
+    init = (by_id.get(1) or {}).get("result", {})
+    ci.check("initialize:protocolVersion == %s(常量钉死)+ capabilities.tools + serverInfo"
+             % MCP_PROTOCOL,
+             init.get("protocolVersion") == MCP_PROTOCOL
+             and isinstance(init.get("capabilities", {}).get("tools"), dict)
+             and (init.get("serverInfo") or {}).get("name") == "llmwiki",
+             json.dumps(init, ensure_ascii=False)[:300])
+    tools = ((by_id.get(2) or {}).get("result") or {}).get("tools") or []
+    ci.check("tools/list 恰 4 工具且 name 集合固定、inputSchema 均为 object",
+             {t.get("name") for t in tools} == {"wiki_map", "wiki_search",
+                                                "wiki_page", "wiki_capture"}
+             and len(tools) == 4
+             and all((t.get("inputSchema") or {}).get("type") == "object" for t in tools),
+             json.dumps([t.get("name") for t in tools], ensure_ascii=False))
+
+    def tool_payload(rid):
+        res = (by_id.get(rid) or {}).get("result") or {}
+        txt = ((res.get("content") or [{}])[0]).get("text") or "{}"
+        try:
+            return json.loads(txt), res.get("isError")
+        except json.JSONDecodeError:
+            return {}, res.get("isError")
+
+    p_map, e_map = tool_payload(3)
+    ci.check("wiki_map:返回 _map 全文 + read_tiers 节 + est_tokens/budgets",
+             e_map is False and "读取档位" in (p_map.get("content") or "")
+             and p_map.get("read_tiers") and p_map.get("est_tokens", 0) > 0
+             and "map_lines" in (p_map.get("budgets") or {}),
+             json.dumps({k: v for k, v in p_map.items() if k != "content"},
+                        ensure_ascii=False)[:300])
+    p_s, e_s = tool_payload(4)
+    ci.check("wiki_search:透传 search.py --json 形状 {query,k,count,hits} 且有命中(检索单源)",
+             e_s is False and set(["query", "k", "count", "hits"])
+             <= set((p_s.get("result") or {}).keys())
+             and (p_s.get("result") or {}).get("count", 0) >= 1,
+             json.dumps(p_s, ensure_ascii=False)[:300])
+    p_pg, e_pg = tool_payload(5)
+    ci.check("wiki_page:max_tokens 是硬承诺(returned ≤ 40)+ truncated 回报 + 整页 est_tokens",
+             e_pg is False and p_pg.get("truncated") is True
+             and 0 < p_pg.get("returned_est_tokens", 1e9) <= 40
+             and p_pg.get("est_tokens", 0) >= p_pg.get("returned_est_tokens", 0),
+             json.dumps({k: v for k, v in p_pg.items() if k != "content"},
+                        ensure_ascii=False)[:300])
+    _p_tr, e_tr = tool_payload(6)
+    ci.check("wiki_page:slug 只认库内实页 → ../ 路径穿越被拒(isError,非崩进程)",
+             e_tr is True, "isError=%s" % e_tr)
+    p_c1, e_c1 = tool_payload(7)
+    p_c2, e_c2 = tool_payload(8)
+    drafted = p_c1.get("drafted") or ""
+    ci.check("wiki_capture:投递到 push 管线 raw 目录 + 台账登记,重投幂等跳过",
+             e_c1 is False and e_c2 is False and drafted.startswith("raw/")
+             and (mprobe / drafted).is_file() and p_c2.get("drafted") is None
+             and p_c2.get("skipped_existing") == drafted,
+             json.dumps([p_c1, p_c2], ensure_ascii=False)[:400])
+    ci.check("W-ARCH-2 写边界:mcp_server 全程零改动 wiki/(整合是 agent 的活)",
+             tree_state(mprobe / "wiki") == wiki_before, "wiki/ 被改动")
+    ci.check("投递件被 sync 报为 pending(投递 ≠ 整合,W-CAP-1)",
+             _pending(mprobe) == _pending(base) + 1,   # 与未投递的 base 比增量,不写死基数
+             "probe=%d base=%d" % (_pending(mprobe), _pending(base)))
+    ci.check("协议分层:未知工具 → JSON-RPC -32602;未知方法 → -32601(非 isError)",
+             ((by_id.get(9) or {}).get("error") or {}).get("code") == -32602
+             and ((by_id.get(10) or {}).get("error") or {}).get("code") == -32601,
+             json.dumps([by_id.get(9), by_id.get(10)], ensure_ascii=False)[:300])
+    ci.check("wiki_capture 台账登记真的生效(register.added ≥ 1,不是被吞的空结果)",
+             (p_c1.get("register") or {}).get("added", 0) >= 1
+             and "register_error" not in p_c1,
+             json.dumps(p_c1.get("register"), ensure_ascii=False)[:300])
+
+    # ---- S8 负例:畸形入参不得打死进程 / 不得注入 frontmatter / 不得静默吞参数 ----
+    bad = [
+        {"jsonrpc": "2.0", "id": 21, "method": "initialize", "params": [1, 2]},
+        {"jsonrpc": "2.0", "id": 22, "method": "tools/call",
+         "params": {"name": ["x"], "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 23, "method": "tools/call", "params": "oops"},
+        {"jsonrpc": "2.0", "id": 24, "method": "tools/call", "params": {
+            "name": "wiki_capture", "arguments": {
+                "title": "X\nkind: adr\ninjected: yes\n---\n# fake", "slug": "inj"}}},
+        {"jsonrpc": "2.0", "id": 25, "method": "tools/call", "params": {
+            "name": "wiki_capture", "arguments": {
+                "title": "坏日期", "slug": "baddate", "date": "9999-99-99"}}},
+        {"jsonrpc": "2.0", "id": 26, "method": "tools/call", "params": {
+            "name": "wiki_page", "arguments": {
+                "slug": "greeting-protocol", "max_tokens": "40"}}},
+        {"jsonrpc": "2.0", "id": 27, "method": "tools/list"},      # 探针:后续帧还在吗
+    ]
+    bproc = subprocess.Popen([str(PY), str(mcp), "--root", str(mprobe)],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                             env={**ENV, "PYTHONUNBUFFERED": "1"})
+    try:
+        b_out, b_err = bproc.communicate(
+            "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in bad), timeout=180)
+    except subprocess.TimeoutExpired:
+        bproc.kill()
+        b_out, b_err = bproc.communicate()
+    bframes = {}
+    for ln in (b_out or "").splitlines():
+        if ln.strip():
+            try:
+                f = json.loads(ln)
+                bframes[f.get("id")] = f
+            except json.JSONDecodeError:
+                pass
+    ci.check("畸形 params/name(数组·标量·非串)→ 逐帧 -32602,进程存活且后续帧不丢(rc=0)",
+             bproc.returncode == 0 and len(bframes) == 7
+             and all(((bframes.get(i) or {}).get("error") or {}).get("code") == -32602
+                     for i in (21, 22, 23))
+             and len((((bframes.get(27) or {}).get("result") or {}).get("tools") or [])) == 4,
+             "rc=%s frames=%s stderr(tail)=%s"
+             % (bproc.returncode, sorted(bframes), (b_err or "")[-200:]))
+
+    def bad_payload(rid):
+        res = (bframes.get(rid) or {}).get("result") or {}
+        try:
+            return json.loads(((res.get("content") or [{}])[0]).get("text") or "{}"), \
+                res.get("isError")
+        except json.JSONDecodeError:
+            return {}, res.get("isError")
+
+    _pi, e_inj = bad_payload(24)
+    ci.check("wiki_capture 拒收含换行/`---` 的 title(伪 frontmatter 注入,不静默改写)",
+             e_inj is True and not (mprobe / "raw" / "inbox" / "2026-07-25-inj.md").exists(),
+             "isError=%s" % e_inj)
+    _pd, e_date = bad_payload(25)
+    ci.check("wiki_capture 拒收非法日历日 9999-99-99(fullmatch + fromisoformat)",
+             e_date is True, "isError=%s" % e_date)
+    p_ig, e_ig = bad_payload(26)
+    ci.check("max_tokens 类型不符 → 回 ignored_args 让调用方可察觉(不静默换默认值)",
+             e_ig is False and (p_ig.get("ignored_args") or {}).get("max_tokens") == "40"
+             and p_ig.get("max_tokens_applied") == 2000,
+             json.dumps({k: v for k, v in p_ig.items() if k != "content"},
+                        ensure_ascii=False)[:300])
+
 
 def phase_manual_peers(ci: CI, base: Path, mf: Path) -> None:
     print("\n[base+mf/j] manual 哨兵零警告;peers 段进 status --json")
@@ -865,6 +1399,209 @@ def phase_manual_peers(ci: CI, base: Path, mf: Path) -> None:
 
 # ---------------------------------------------------------------- 主流程
 
+def phase_bootstrap(ci: CI, base: Path, tmp: Path) -> None:
+    """(n) S5 冷启动 bootstrap:只读扫宿主 → state/bootstrap-candidates.json。
+
+    双探针:① tmp 假宿主(无 .git,天然覆盖 git 缺席降级)——断言组/kind 映射、确定性、
+    写边界(宿主树零写入 + 实例只新增 state 那一个文件);② 对框架仓自身只读扫(--repo FW,
+    产物写 tmp 探针)——落实「对 llmwiki 仓跑出 ≥10 候选」这条验收面,同时反证只读性。
+    另断言 wiki-bootstrap 向导已由 build_plan 自动枚举渲进实例 .claude/skills/。
+    """
+    print("\n[base/n] bootstrap_scan 只读扫宿主 → 候选确定性 + 只写 state/ + 向导渲染就位")
+    tool = FW / "tools" / "bootstrap_scan.py"
+    probe = tmp / "bootstrap-probe"
+    shutil.copytree(str(base), str(probe), symlinks=True)
+
+    # ---- 探针①:tmp 假宿主(内容固定 → 候选数/映射可精确断言;无 .git → 降级分支)----
+    host = tmp / "fake-host"
+    (host / "docs" / "adr").mkdir(parents=True, exist_ok=True)
+    (host / "docs").joinpath("setup-guide.md").write_text(
+        "# 部署指南\n\n步骤若干。\n", encoding="utf-8")
+    (host / "docs" / "adr").joinpath("0001-pick-store.md").write_text(
+        "---\ntitle: ADR-1 选型定稿\n---\n\n决策正文。\n", encoding="utf-8")
+    host.joinpath("README.md").write_text("# 假宿主项目\n\n总览。\n", encoding="utf-8")
+    host.joinpath("CHANGELOG.md").write_text("# 变更日志\n\n## 0.1.0\n", encoding="utf-8")
+    host.joinpath("CONTRIBUTING.md").write_text("# 贡献指南\n\n约定。\n", encoding="utf-8")
+    (host / "node_modules").mkdir(exist_ok=True)          # 剪枝面:不得被扫出
+    (host / "node_modules").joinpath("README.md").write_text("# dep\n", encoding="utf-8")
+    out_rel = "state/bootstrap-candidates.json"
+    host_before, inst_before = tree_state(host), tree_state(probe)
+
+    d1 = ci.run_json("bootstrap_scan #1(假宿主)",
+                     [PY, tool, "--root", probe, "--repo", host, "--json"])
+    doc = json.loads((probe / out_rel).read_text(encoding="utf-8"))
+    cands = doc["candidates"]
+    ci.check("假宿主候选 == 5(剪枝 node_modules;README/CHANGELOG/adr/docs/root-doc 各 1)",
+             len(cands) == 5 and d1["candidates"] == 5,
+             "paths=%s" % [c["path"] for c in cands])
+    ci.check("组/rank 映射正确(readme1 changelog2 adr3 docs4 root-doc5,按 rank 升序)",
+             [(c["rank"], c["source"], c["path"]) for c in cands]
+             == [(1, "readme", "README.md"), (2, "changelog", "CHANGELOG.md"),
+                 (3, "adr", "docs/adr/0001-pick-store.md"),
+                 (4, "docs", "docs/setup-guide.md"),
+                 (5, "root-doc", "CONTRIBUTING.md")],
+             "got=%s" % [(c["rank"], c["source"], c["path"]) for c in cands])
+    adr = cands[2]
+    ci.check("ADR 候选:frontmatter title 优先 + 建议 kind=adr + est_tokens>0",
+             adr["title"] == "ADR-1 选型定稿" and adr["kind"] == "adr"
+             and adr["est_tokens"] > 0,
+             "adr=%s" % json.dumps(adr, ensure_ascii=False))
+    ci.check("docs 组 how-to 词根 → 建议 kind=howto;H1 回退取标题",
+             cands[3]["kind"] == "howto" and cands[3]["title"] == "部署指南",
+             "docs=%s" % json.dumps(cands[3], ensure_ascii=False))
+    ci.check("git 缺席(假宿主非 git 仓)→ 降级跳过该组、rc 仍 0",
+             d1["git"]["available"] is False and bool(d1["git"]["reason"])
+             and d1["counts"]["by_source"].get("git-log") is None,
+             "git=%s" % json.dumps(d1["git"], ensure_ascii=False))
+    ci.check("产物不含绝对路径/机器信息(repo 只记相对标签或 basename)",
+             "/" not in doc["repo"].replace("../", "").replace("..", "")
+             and str(tmp) not in (probe / out_rel).read_text(encoding="utf-8"),
+             "repo=%r" % doc["repo"])
+
+    snap1 = snapshot([probe / out_rel])
+    d2 = ci.run_json("bootstrap_scan #2(重跑同宿主)",
+                     [PY, tool, "--root", probe, "--repo", host, "--json"])
+    snap2 = snapshot([probe / out_rel])
+    _vary = ("written", "unchanged")            # 这两个按 _write_if_changed 语义本应翻转(见下条)
+    ci.check("两次运行 --json 统计逐位一致(确定性;written/unchanged 除外)",
+             set(d1) == set(d2)
+             and all(d1[k] == d2.get(k) for k in d1 if k not in _vary),
+             "d1!=d2:\n%s\n%s" % (json.dumps(d1, ensure_ascii=False)[:300],
+                                  json.dumps(d2, ensure_ascii=False)[:300]))
+    ci.check("bootstrap-candidates.json 两次运行逐字节相同(确定性)",
+             snap1 == snap2, "产物漂移")
+    ci.check("内容未变则不重写(第二跑自报 written=[] / unchanged 列产物)",
+             d2["written"] == [] and d2["unchanged"] == [out_rel],
+             "written=%s unchanged=%s" % (d2["written"], d2["unchanged"]))
+    ci.check("只读扫描:宿主 repo 全树零写入", tree_state(host) == host_before,
+             "宿主被改:%s" % sorted(set(tree_state(host).items())
+                                  ^ set(host_before.items()))[:6])
+    after = tree_state(probe)
+    touched = sorted(k for k in set(after) | set(inst_before)
+                     if after.get(k) != inst_before.get(k))
+    ci.check("W-ARCH-2 写边界:实例仅新增 %s(wiki/ raw/ site/ 零改动)" % out_rel,
+             touched == [out_rel], "越界写:%s" % touched)
+
+    # ---- 探针②:对框架仓自身只读扫(验收面「≥10 候选」;产物落 tmp,绝不写仓库)----
+    probe2 = tmp / "bootstrap-probe-fw"
+    shutil.copytree(str(base), str(probe2), symlinks=True)
+    d3 = ci.run_json("bootstrap_scan(--repo 框架仓自身)",
+                     [PY, tool, "--root", probe2, "--repo", FW, "--json"])
+    ci.check("对 llmwiki 仓自身扫出 ≥10 候选(验收面)", d3["candidates"] >= 10,
+             "candidates=%s by_source=%s"
+             % (d3["candidates"], json.dumps(d3["counts"]["by_source"], ensure_ascii=False)))
+    fw_doc = json.loads((probe2 / out_rel).read_text(encoding="utf-8"))
+    fw_paths = [c["path"] for c in fw_doc["candidates"] if c["path"]]
+    ci.check("剪枝生效:候选不含 knowledge/ tests/ templates/ design-docs/ .claude/",
+             not [p for p in fw_paths
+                  if p.split("/")[0] in ("knowledge", "tests", "templates", ".claude")
+                  or "design-docs" in p],
+             "越界候选:%s" % [p for p in fw_paths if p.split("/")[0]
+                            in ("knowledge", "tests", "templates", ".claude")][:6])
+
+    # ---- 负例:宿主含不可读目录(无 x 位)→ 不得裸崩(扫的是别人的树,无权目录是常态)----
+    locked = host / "docs" / "locked"
+    locked.mkdir(parents=True, exist_ok=True)
+    locked.joinpath("note.txt").write_text(       # 非 md:root 下也读不出候选,断言两侧同值
+        "非 md 文件:保证 root/非 root 下候选数都不变\n", encoding="utf-8")
+    locked.chmod(0o000)
+    try:
+        d4 = ci.run_json("bootstrap_scan(宿主含不可读目录)",
+                         [PY, tool, "--root", probe, "--repo", host, "--json"])
+        ci.check("不可读目录不致命:rc=0 且候选数不变(不裸抛 PermissionError)",
+                 d4["candidates"] == 5, "candidates=%s" % d4["candidates"])
+        is_root = hasattr(os, "getuid") and os.getuid() == 0
+        ci.check("不可读目录被记账 skipped_unreadable_dirs(root 下权限位失效,退字段存在性)",
+                 d4["counts"]["skipped_unreadable_dirs"] >= 1 if not is_root
+                 else "skipped_unreadable_dirs" in d4["counts"],
+                 "counts=%s is_root=%s"
+                 % (json.dumps(d4["counts"], ensure_ascii=False), is_root))
+    finally:
+        locked.chmod(0o755)                       # 必须恢复:否则 CI 收尾 rmtree(tmp) 失败
+
+    # ---- 向导渲染就位(build_plan 自动枚举 templates/skills,零代码接入)----
+    sk = base / ".claude" / "skills" / "wiki-bootstrap" / "SKILL.md"
+    txt = sk.read_text(encoding="utf-8") if sk.is_file() else ""
+    ci.check("wiki-bootstrap 向导渲进实例 .claude/skills/(且无条件块/槽位残留)",
+             sk.is_file()
+             and not any(m in txt for m in ("<SLOT:", "<!--BEGIN:", "<!--END:"))
+             and "bootstrap_scan.py" in txt,
+             "path=%s exists=%s" % (sk, sk.is_file()))
+
+
+def phase_dist(ci: CI) -> None:
+    """(p) W-DIST-1 分发壳:框架仓 `.claude-plugin/{marketplace,plugin}.json` 合法 JSON +
+    版本三方同步(plugin==marketplace==framework/VERSION)+ skills 只指向仓内既存
+    `.claude/skills/`(三向导可达,不新增副本)+ MANIFEST 归 meta 档(装框架分发壳,
+    init_render 不拷、不渲染进实例)。机械冒烟,宿主真安装(/plugin)靠 README 人工 e2e。"""
+    print("\n[base/p] W-DIST-1 分发壳:marketplace/plugin 清单合法 + 版本同步 + skills 路径 + meta 档")
+    kebab = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+    mkt_p = FW / ".claude-plugin" / "marketplace.json"
+    plg_p = FW / ".claude-plugin" / "plugin.json"
+    ci.check(".claude-plugin/{marketplace,plugin}.json 均存在",
+             mkt_p.is_file() and plg_p.is_file(),
+             "marketplace=%s plugin=%s" % (mkt_p.exists(), plg_p.exists()))
+    try:
+        mkt = json.loads(mkt_p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        ci.check("marketplace.json 合法 JSON", False, str(e))
+        return                                                 # unreachable(check 已 fail-fast)
+    try:
+        plg = json.loads(plg_p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        ci.check("plugin.json 合法 JSON", False, str(e))
+        return
+    ci.check("marketplace.json / plugin.json 均为合法 JSON", True)
+
+    plugins = mkt.get("plugins")
+    ci.check("marketplace 有 name(kebab)+ owner.name + 非空 plugins[]",
+             isinstance(mkt.get("name"), str) and bool(kebab.match(mkt.get("name", "")))
+             and isinstance(mkt.get("owner"), dict) and bool(mkt["owner"].get("name"))
+             and isinstance(plugins, list) and len(plugins) >= 1,
+             json.dumps(mkt, ensure_ascii=False)[:300])
+    entry = plugins[0] if (isinstance(plugins, list) and plugins
+                           and isinstance(plugins[0], dict)) else {}  # 非 dict 元素 → {} 兜底(下方 .get 走清晰断言而非 AttributeError)
+    ci.check("marketplace plugins[0].source 指向本仓(\".\"/\"./\")",
+             entry.get("source") in (".", "./"),
+             "source=%r" % entry.get("source"))
+    ci.check("plugin.name == marketplace plugins[0].name 且 kebab-case",
+             isinstance(plg.get("name"), str) and bool(kebab.match(plg.get("name", "")))
+             and plg.get("name") == entry.get("name"),
+             "plugin=%r entry=%r" % (plg.get("name"), entry.get("name")))
+    ci.check("版本三方同步:plugin.version == marketplace.version == framework/VERSION(%s)" % CUR_V,
+             plg.get("version") == CUR_V and entry.get("version") == CUR_V,
+             "plugin=%r entry=%r VERSION=%r" % (plg.get("version"), entry.get("version"), CUR_V))
+
+    skills = plg.get("skills")
+    skills = [skills] if isinstance(skills, str) else (skills if isinstance(skills, list) else [])  # 非 str/list(如 int)→ [](下方「非空」断言清晰 fail,不 len(int) 崩)
+    ci.check("plugin.skills 非空且各项以 ./ 开头(相对插件根)",
+             len(skills) >= 1 and all(isinstance(s, str) and s.startswith("./") for s in skills),
+             "skills=%r" % (plg.get("skills"),))
+    found = set()
+    for s in skills:
+        rel_s = s[2:] if s.startswith("./") else s             # 只剥 "./" 前缀(勿 lstrip,会吃掉 .claude 的点)
+        d = FW / rel_s
+        ci.check("skills 目录存在:%s" % s, d.is_dir(), "resolved=%s" % d)
+        if d.is_dir():
+            for sk in sorted(d.glob("*/SKILL.md")):
+                found.add(sk.parent.name)
+    ci.check("三向导 skill 经 plugin.skills 可达(wiki-init/wiki-upgrade/wiki-golden)",
+             {"wiki-init", "wiki-upgrade", "wiki-golden"} <= found,
+             "found=%s" % sorted(found))
+
+    try:
+        mf = json.loads((FW / "framework" / "MANIFEST.json").read_text(encoding="utf-8"))
+        by_path = {f["path"]: f["tier"] for f in mf["files"]}
+    except (json.JSONDecodeError, OSError, KeyError, TypeError) as e:
+        ci.check("framework/MANIFEST.json 可解析且含 files[]", False, str(e))
+        return                                                 # unreachable(check 已 fail-fast)
+    for rel in (".claude-plugin/marketplace.json", ".claude-plugin/plugin.json"):
+        ci.check("MANIFEST 收录 %s 且归 meta 档(不入 frozen/render-once)" % rel,
+                 by_path.get(rel) == "meta",
+                 "tier=%r(MANIFEST 中含 .claude-plugin 的键: %s)"
+                 % (by_path.get(rel), [p for p in by_path if ".claude-plugin" in p]))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="hello-wiki 夹具 CI(标准库,唯一入口)")
     ap.add_argument("--keep", action="store_true", help="结束后保留 tmp 实例(默认成功即清理)")
@@ -878,10 +1615,18 @@ def main(argv=None) -> int:
                  FW / "tools" / "build_site.py", FW / "tools" / "build_index.py",
                  FW / "tools" / "sync.py", FW / "tools" / "eval_retrieval.py",
                  FW / "adapters" / "local_notes.py", FW / "tools" / "lib" / "fm.py",
+                 FW / "tools" / "lib" / "textindex.py", FW / "tools" / "search.py",
+                 FW / "tools" / "lib" / "wikigraph.py", FW / "tools" / "lib" / "secscan.py",
                  FW / "tools" / "upgrade.py", FW / "tools" / "gen_manifest.py",
+                 FW / "tools" / "bootstrap_scan.py",
                  FW / "extras" / "serve.py", FW / "extras" / "i18n_link.py",
+                 FW / "extras" / "mcp_server.py",
+                 FW / "extras" / "hooks" / "capture_draft.py",
+                 FW / "extras" / "hooks" / "boot_reminder.py",
                  FW / "framework" / "VERSION", FW / "framework" / "MANIFEST.json",
-                 FW / "framework" / "UPGRADING.md"):
+                 FW / "framework" / "UPGRADING.md",
+                 FW / ".claude-plugin" / "marketplace.json",
+                 FW / ".claude-plugin" / "plugin.json"):
         if not need.exists():
             print("错误: 缺少夹具/框架文件:%s" % need, file=sys.stderr)
             return 2
@@ -901,8 +1646,14 @@ def main(argv=None) -> int:
         phase_eval(ci, base)                                   # (e)
         phase_multifacet(ci, tmp, base)                        # (f)
         phase_golden_check(ci, base, tmp)                      # (g)
+        phase_keyword_miss(ci, base, tmp)                      # (k) 第 9 题型 + search hit@3
+        phase_orphan(ci, base, tmp)                            # (o) 孤儿注入 + backlinks 不救孤儿
+        phase_secscan(ci, base, tmp)                           # (s) W-SEC-3 脱敏扫描(命中/豁免)
+        phase_lineage(ci, base, tmp)                           # (l) W-ING-5 演进链(合法/破损两态)
+        phase_bootstrap(ci, base, tmp)                         # (n) S5 冷启动(候选确定性 + 只写 state/)
         phase_upgrade(ci, tmp, base)                           # (h)
         phase_extras(ci, base)                                 # (i)
+        phase_dist(ci)                                         # (p) W-DIST-1 分发壳(plugin/marketplace)
         phase_manual_peers(ci, base, tmp / "mf")               # (j)
     except CheckFail:
         pass                                                   # 已记账,fail-fast

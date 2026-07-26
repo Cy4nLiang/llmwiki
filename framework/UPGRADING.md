@@ -35,6 +35,88 @@
 
 ---
 
+## 1.4.0 — 2026-07-26(判级:MINOR)
+
+### 变更摘要
+- 生命周期:整页结论被新版取代用 frontmatter `supersedes:` / `superseded_by:` 登记 lineage,lint 校验双向一致 / 目标可解析 / 被替代页横幅存在且未误用 ⚠️(**全 soft warning**);`wiki/contradictions.md` 新增「演进链 / Lineage」分节(**演进 ≠ 矛盾**,不进 ⚠️ 区);查询命中被替代页须跟到后继(W-ING-5)。
+- followups 出口:新增 `wiki-research` 实例工作流 skill——从「待读资源/未解问题」选题(用户确认)→ 宿主 web 工具调研 → 逐字快照落逐篇型管线 raw 目录 → 标准 ingest → 勾销台账。**网络只在 agent 侧,工具链保持离线**。
+- MCP 接口(可选):新增 `extras/mcp_server.py`——纯标准库 JSON-RPC 2.0 over stdio,协议 `2025-11-25` 钉死,4 工具(`wiki_map` / `wiki_search` / `wiki_page` / `wiki_capture`),供 Claude Desktop / Cursor / Windsurf 等**非 skills 宿主**消费同一座 wiki;配置见 `docs/mcp.md`。
+- 团队模式:新增 `docs/rfc-team-mode.md`(**RFC / 提案,未实现**;v1 单写者语义零改动)与本仓自用 CI 配方 `.github/workflows/ci.yml`。
+
+### 迁移清单(1.3.0 实例 → 1.4.0,逐条引规则 ID)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| W-ING-5 | 新增(supersession 演进链) | frozen 工具自动获得(lint_wiki / build_index / lib/wikigraph)。**无强制动作**:不写 `supersedes:` / `superseded_by:` 的实例零影响(字段可选,lint 只在写了之后才校验)。要用:新页记 `supersedes: <旧页 slug>`、旧页记 `superseded_by: <新页 slug>`(**双向必写**,值为页 slug,多个用**单行** `[a, b]`——换行 `- a` 块写法会被 frontmatter 解析器静默丢成空值,lint 会点名),旧页正文留一行 `> **已被取代**:… [[后继]]` 横幅(**不用 ⚠️**);随后重跑 `build_index` 刷新 contradictions 的「演进链」分节。契约「交叉引用」节 + `.claude/rules/aggregate-pages.md` + `templates/skills/wiki-query` 均加了 W-ING-5 条款(render-once):**实例若回填过这三处,升级出 `.upgrade-new`,把对应段落逐 diff 并入本地** | frozen / render-once |
+| — | 新增 skill(research 闭环) | `templates/skills/wiki-research/SKILL.md` 是**新增 render-once 文件**,实例无同名文件 → 经 upgrade.py 的 ro_install **直接安装**到 `.claude/skills/wiki-research/SKILL.md`,零冲突。首次使用:grep `wiki/followups.md` 的「待读资源 / 未解问题」选题 → 用宿主 web 工具调研 → 快照投**逐篇型**(`pull`/`push`)管线的 raw 目录(**不要投 `rolling` 管线**)→ 走标准 ingest → 删掉已闭环的 followups 条目 + `wiki/log.md` 记一条 `note` | render-once |
+| — | 新增可选组件(MCP) | **无强制动作**(`extras/` 不随实例分发,init_render 不拷)。要启用:按 `docs/mcp.md` 的宿主注册片段,把 `python3 <框架 checkout 绝对路径>/extras/mcp_server.py --root <实例根>` 填进宿主的 `mcpServers` 配置(Claude Code `.mcp.json` / Claude Desktop / Cursor / Windsurf 各自路径见该文档);先在实例里跑过 `build_site` + `build_index`,否则 `wiki_search` 会返回「索引未就位」。`wiki_capture` 的投递口取自 config **第一条 `kind: push` 管线**的 `raw_dir`(不硬编码 `raw/inbox`) | frozen(extras,不分发) |
+| — | 新增文档(团队 RFC) | **无实例动作**:`docs/rfc-team-mode.md` 是提案文档,随 `docs/` 分发到实例仅供阅读;其 5 项提案**均未实现**,不要当契约执行。`.github/workflows/ci.yml` 是 meta 档、不随实例分发;团队若要抄门禁配方,抄它的 **instance job** 那一半并把 `--root` 换成自己的实例根(`tests/run_ci.py` 是框架仓专有,实例仓没有该文件) | frozen(文档)/ meta(不分发) |
+
+### frozen 覆盖清单
+- `extras/mcp_server.py`、`docs/mcp.md`、`docs/rfc-team-mode.md` —— 新增文件,实例升级走「直接安装」(W-UPG-1;`docs/` 随实例分发,`extras/` 按既有口径不分发、未持有 extras/ 的实例列「未持有跳过」)
+- `tools/lib/wikigraph.py` —— hash 变更(新增 `fm_slugs`:lineage 多值解析单源);`tools/lint_wiki.py` —— hash 变更(新增 `lineage` 检查项);`tools/build_index.py` —— hash 变更(新增 `lineage_lines` + 演进链分节);`extras/README.md` —— hash 变更(登记 mcp_server)。MANIFEST 校验干净则整体覆盖,有本地改动 → fork 或回退二选一
+
+### 验收
+- lint 全绿 + golden 门禁不回退(W-UPG-2;knowledge dogfood P 1.000 / R 0.958);回滚锚点 = 升级前自动打的 tag。
+- `python3 tests/run_ci.py` 全绿(本版断言总数 214→256);渲染实例 `.claude/skills/` 出现 `wiki-research/`;`wiki/contradictions.md` 出现「演进链 / Lineage」分节。
+- 注:RULES.md 总表 32 条(本版新增 W-ING-5;实例契约 31 条 W-* 标注——W-DIST-1 是仓级分发壳规则不渲染进实例)。MCP 宿主注册与团队 RFC 属人工面,CI 只做机械冒烟(`tests/run_ci.py` phase_extras 的 stdio 握手段)。
+
+---
+
+## 1.3.0 — 2026-07-25(判级:MINOR)
+
+### 变更摘要
+- 自动捕获(可选):`extras/hooks/` 两个 Claude Code hook——`boot_reminder.py`(SessionStart)注入「先读 `wiki/_map.md`」启动提醒;`capture_draft.py`(SessionEnd/Stop)在 `raw/inbox/` 投递 `kind: draft` 占位草稿,让 W-CAP-1 收尾检查点不被遗忘(**opt-in**:不配置不触发;投递 ≠ 整合,草稿是 stub)。
+- 冷启动:新增 `tools/bootstrap_scan.py`——只读扫宿主 repo(README*/CHANGELOG*/`**/adr/**`/`docs/**`/仓根 md/工程约定文档/`git log --grep` 决策词;git 缺席自动跳过该组)→ `state/bootstrap-candidates.json`;配 `wiki-bootstrap` 向导(勾选 → 投 inbox → 批量 light 档 ingest → followups 待晋升)。
+- 分发:新增 `.claude-plugin/`(marketplace + plugin 清单),框架仓可经 `/plugin marketplace add Cy4nLiang/llmwiki` 安装并暴露 `/wiki-init`·`/wiki-upgrade`·`/wiki-golden` 三向导;README 加「60 秒上手」quickstart 与 LLM-Wiki 竞品对比表(W-DIST-1)。
+- 文档:新增 `docs/hooks.md`(settings.json 配置片段 + 人工 e2e 清单)。
+
+### 迁移清单(1.2.0 实例 → 1.3.0,逐条引规则 ID)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| — | 新增可选组件(hooks) | **无强制动作**(`extras/` 不随实例分发,init_render 不拷)。要启用:往**你实例/宿主项目**的 `.claude/settings.json` 加 SessionStart 与 Stop 两条 command hook(Claude Code 只读**会话所在项目**的 settings,写进框架 checkout 的不会触发),`command` 填 `python3 <框架 checkout 绝对路径>/extras/hooks/{boot_reminder,capture_draft}.py`,并用 `env.LLMWIKI_ROOT` 或 `--root` 指向实例根(JSON 片段照抄 `docs/hooks.md`「配置」节);不配置则完全不触发。**前提**:实例须有一条 `raw_dir` 为 `raw/inbox` 的 push 管线——capture_draft 以 `raw/inbox/` 存在为「是本框架实例」的判据并投递到该目录,缺它则静默不投(hook 恒 exit 0,无诊断);若只 `mkdir raw/inbox` 而管线 `raw_dir` 另有其值,草稿投了也永不被 `sync.py status` 报 pending(sync 只扫管线声明的 `raw_dir`) | frozen(extras,不分发) |
+| — | 新增工具 + 新增 skill(冷启动) | frozen 工具随升级获得 `tools/bootstrap_scan.py`;`templates/skills/wiki-bootstrap/SKILL.md` 是**新增 render-once 文件**,实例无同名文件 → 经 upgrade.py 的 ro_install **直接安装**到 `.claude/skills/wiki-bootstrap/SKILL.md`,零冲突。首次使用:`python3 tools/bootstrap_scan.py`(embedded 默认扫宿主 `..`;别处宿主用 `--repo <宿主根>`)→ 读 `state/bootstrap-candidates.json` → 按向导逐条勾选后投**该 push 管线声明的 `raw_dir`**(默认 `raw/inbox/`;非默认实例照 `sync.py status` 输出的 raw 目录投,否则投了不被报 pending)(**未勾选不投递**,W-CAP-1)→ 批量 light 档 ingest 并记 followups 待晋升(W-ING-1/W-LOG-2) | frozen / render-once |
+| — | 契约「工具速查」增行 | `tools.cmds` 新增 `bootstrap_scan.py` 一行(render-once 三方合并自动采用);实例若回填过契约或 ingest/query/sync skill,升级出对应 `.upgrade-new`,把该行逐 diff 并入本地 | render-once |
+| W-DIST-1 | 新增(分发壳) | **无实例动作**:`.claude-plugin/` 为仓级 meta 分发壳,init_render 不拷、永不进实例;仅框架仓获得 `/plugin` 安装能力,plugin/marketplace 的 `version` 由 CI 锁定恒等于 `framework/VERSION` | meta(仓级) |
+
+### frozen 覆盖清单
+- `tools/bootstrap_scan.py`、`docs/hooks.md` —— 新增文件,实例升级走「直接安装」(W-UPG-1;新文件无本地改动,直接落位)
+- `extras/hooks/{capture_draft,boot_reminder}.py`(新增)、`extras/README.md`(hash 变更:登记 hooks 一节)—— `extras/` 不随实例分发,frozen 决策**限实例实际持有路径**:未采纳 `extras/` 的实例升级时列「未持有跳过」,不会落位;曾手工采纳过 `extras/` 的实例按常规——MANIFEST 校验干净则整体覆盖,有本地改动 → fork 或回退二选一
+- `tools/init_render.py` —— hash 变更(`tools.cmds` 增行);MANIFEST 校验干净则整体覆盖,有本地改动 → fork 或回退二选一
+
+### 验收
+- lint 全绿 + golden 门禁不回退(W-UPG-2;knowledge dogfood P 1.000 / R 0.958);回滚锚点 = 升级前自动打的 tag。
+- `python3 tests/run_ci.py` 全绿(本版断言总数 173→214);渲染实例 `.claude/skills/` 出现 `wiki-bootstrap/`。
+- 注:RULES.md 总表 31 条(本版新增 W-DIST-1;它是**仓级分发壳规则,不渲染进实例契约**——实例契约仍 30 条 W-* 标注);hooks 与 plugin 安装属宿主行为,CI 只做机械冒烟,真会话/真安装靠 `docs/hooks.md` 与 README 的人工 e2e 清单。
+
+---
+
+## 1.2.0 — 2026-07-24(判级:MINOR)
+
+### 变更摘要
+- 排名检索:新增 `tools/search.py`(BM25)+ 派生 `site/agent/search-index.json`;`_map` 决策表加「关键词不确定/模糊探索」入口(W-IDX-3)。
+- 链接图谱:派生 `wiki/backlinks.md`(反链)与 `site/agent/graph.json`(边表),供社区/中心/孤立分析(W-IDX-4;只做确定性 wikilink 解析,不做语义推断边)。
+- 内容脱敏:lint 对 wiki/raw 文本扫密钥/凭证样式(soft warning,只报类型不回显值),ingest 加遮蔽步(W-SEC-3)。
+- 评测:golden 新增第 9 题型 `keyword-miss`(排名检索探针;additive,旧 golden 无需改)。
+
+### 迁移清单(1.1.1 实例 → 1.2.0,逐条引规则 ID)
+| 规则 ID | 变更类型 | 实例动作 | 涉及档位 |
+|---|---|---|---|
+| W-IDX-3 | 新增(排名检索索引) | frozen 工具自动获得(search.py/build_site);首次跑 `build_site` 派生 search-index.json;`_map` 模板加「关键词不确定」行——**实例若回填过 `_map`,升级出 `_map.md.upgrade-new`,逐 diff 把新行并入本地 `_map`** | frozen / render-once |
+| W-IDX-4 | 新增(链接图谱) | frozen 工具自动获得(wikigraph/build_index/build_site);首次跑 `build_index`+`build_site` 派生 backlinks.md/graph.json;`backlinks.md` 为新 wiki 内派生物,**禁手编**(与 index.md 同,改内容重跑派生) | frozen / render-once |
+| W-SEC-3 | 新增(内容脱敏) | lint 自动获得 secscan;命中报 **soft warning 不改 exit**;wiki 页遮蔽或 `<!-- secscan:allow -->` 豁免,raw/ 命中于 ingest 时遮蔽并在源页 Processing Notes 标注。契约硬规则第 13 条 + `templates/skills/wiki-ingest` 加脱敏步(render-once):实例若回填过契约/ingest skill,升级出 `.upgrade-new`,把脱敏 bullet 逐 diff 并入本地 | frozen / render-once |
+| — | 新增题型/工具 | golden 可选用 `keyword-miss` 题型;契约「工具速查」新增 search.py 行(render-once 三方合并自动采用) | render-once |
+
+### frozen 覆盖清单
+- `tools/lib/{textindex,wikigraph,secscan}.py`、`tools/search.py` —— 新增文件,实例升级走「直接安装」(W-UPG-1;新文件无本地改动,直接落位)
+- `tools/{build_site,build_index,lint_wiki,init_render,gen_manifest,eval_retrieval}.py`、`evals/{golden.schema.json,question-types.md,playbook.md}` —— hash 变更;MANIFEST 校验干净则整体覆盖,有本地改动 → fork 或回退二选一
+
+### 验收
+- lint 全绿 + golden 门禁不回退(W-UPG-2;knowledge dogfood P 1.000 / R 0.958);回滚锚点 = 升级前自动打的 tag。
+- `python3 tests/run_ci.py` 全绿;渲染实例契约含 30 条 W-* 标注(与 RULES.md 对齐)。
+- 注:开发文档 `docs/design-docs/` 已豁免 frozen 分发面(不入 MANIFEST、不随实例分发),实例侧无迁移动作;集线器提示未实现(R2 未映射,soft 中心分析走 graph.json 数据面);本版断言总数 134→173。
+
+---
+
 ## 1.1.1 — 2026-07-20(判级:PATCH)
 
 ### 变更摘要

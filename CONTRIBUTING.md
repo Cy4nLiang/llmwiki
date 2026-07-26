@@ -4,7 +4,7 @@
 
 ## 1. 定位与支持范围
 
-- llmwiki 实例定位**单人 + agent**:read 可并行(只读 subagent 蒸馏回传),write 单写者,均为单会话内语义。跨会话/多成员的 log 合并、聚合页协调**不提供机制**(v1 Non-goal,团队并发留 v2)——请不要提交为多人并发打补丁的 PR,这类需求先开 issue 讨论 v2 方向。
+- llmwiki 实例定位**单人 + agent**:read 可并行(只读 subagent 蒸馏回传),write 单写者,均为单会话内语义。跨会话/多成员的 log 合并、聚合页协调**不提供机制**(v1 Non-goal,团队并发留 v2)——请不要提交为多人并发打补丁的 PR,这类需求先读 `docs/rfc-team-mode.md`(团队模式 RFC:提案与开放问题,**未实现**),再开 issue 讨论 v2 方向。
 - 支持范围:单人维护者 **best-effort**。issue 会看,但没有响应时限承诺。
 - domain 特殊需求优先走两条逃生舱,而不是改框架文件:config 的 `x-` 扩展命名空间 + 契约〈实例扩展附录〉/`.claude/rules/local-*.md`(lint 豁免,升级承诺永不合并冲突)。frozen 档禁改,改 = 显式 fork(W-UPG-1)。
 
@@ -17,7 +17,7 @@
   python3 tests/run_ci.py
   ```
 
-  hello-wiki 夹具闭环(渲染→幂等→lint→sync→eval→多分面→golden 校验→模拟升级),当前 134 项断言(以实跑输出为准);产物全部写系统 tmp,不写仓库。提交前必须全绿。
+  hello-wiki 夹具闭环(渲染→幂等→lint→sync→eval→多分面→golden 校验→模拟升级),当前 256 项断言(以实跑输出为准);产物全部写系统 tmp,不写仓库。提交前必须全绿。
 - 改动 `tools/**` 等 frozen 档文件后,重新生成派生物 MANIFEST(勿手编):
 
   ```bash
@@ -28,7 +28,7 @@
 
 ## 3. 两档规则申明(提 PR 前先看这里)
 
-规则总表见 `framework/RULES.md`(27 条:frozen 23 / convention 4)。两档接受的 PR 类型不同:
+规则总表见 `framework/RULES.md`(32 条:frozen 28 / convention 4)。两档接受的 PR 类型不同:
 
 | 档位 | 语义 | PR 政策 |
 |---|---|---|

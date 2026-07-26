@@ -1,0 +1,119 @@
+# llmwiki 自用 CI —— 同时是 S10 团队模式 RFC 的「活配方」(见 docs/rfc-team-mode.md 提案 4)。
+#
+# 档位:本文件走 gen_manifest.classify() 的兜底分支 → meta 档。既不入 frozen(不受 W-UPG-1
+#       的 hash 门禁)也不入 render-once(不参与升级三方合并),且 init_render 的拷贝白名单
+#       只含 tools/ schema/ adapters/ docs/ → 不随实例分发。注意「零升级干扰」不等于
+#       「不入清单」:它仍被 MANIFEST 收录,新增/改动后须重跑 gen_manifest。
+# 依赖:零。全仓纯 Python 标准库——不装 pip 包、不建 venv、不联网(仅 127.0.0.1 回环)。
+# 首绿前提:本文件随 M1–M3 的改动一并提交才会绿(run_ci 硬前置若干新工具文件)。
+#
+# 两个 job 的切分对团队模式同样成立:①framework 契约面(夹具,domain 无关,可跨 Python 矩阵)
+# ②实例内容面(domain 数据 + 派生物 + golden 门禁)。团队里前者是维护者的事,后者才是每个 PR 的事。
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  fixture:
+    name: fixture CI (py${{ matrix.python }})
+    # 写死 24.04 而非 ubuntu-latest:actions/python-versions 的 3.9 制品最高只到
+    # linux-24.04(3.10+ 才有更新的),用 latest 会在 runner 镜像升级那天让 3.9 这条腿
+    # 静默变红。不要加 `container:`——那会以 root 跑,run_ci 里 chmod 000 的不可读目录
+    # 负例会自动退化成弱断言(不红,但那条负例失去意义)。
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # 下限 3.9:tools/{eval_compare,eval_retrieval}.py 用了 str.removeprefix()(3.9+)。
+        # 全仓无 match/case、类型注解一律带 from __future__ import annotations,故 3.9 是真下限。
+        python: ["3.9", "3.11", "3.13"]
+    env:
+      PYTHONUTF8: "1"                 # 工具输出含中文:压掉 runner C-locale 的编码不确定性
+      PYTHONIOENCODING: "utf-8"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python3 -VV
+      - name: hello-wiki 夹具全量 CI(全部断言;产物写系统 tmp,不写仓库)
+        run: python3 tests/run_ci.py
+
+  instance:
+    name: dogfood instance gate
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # MANIFEST 是派生物(W-IDX-1):重导后 files[] 必须与提交版一致。只比 files[] 与
+      # framework_version,不比 generated(那是可选落款日期,会随天漂)。
+      - name: MANIFEST 无漂移(派生物已重导)
+        run: |
+          python3 tools/gen_manifest.py --root . --out "$RUNNER_TEMP/MANIFEST.regen.json"
+          python3 - <<'PY'
+          import json, os, sys
+          a = json.load(open("framework/MANIFEST.json"))
+          b = json.load(open(os.environ["RUNNER_TEMP"] + "/MANIFEST.regen.json"))
+          ap = {f["path"]: (f["tier"], f["sha256"]) for f in a["files"]}
+          bp = {f["path"]: (f["tier"], f["sha256"]) for f in b["files"]}
+          if a["files"] == b["files"] and a["framework_version"] == b["framework_version"]:
+              print("MANIFEST 一致"); sys.exit(0)
+          print("漂移 — 仅提交版:%s / 仅重导版:%s / 内容变更:%s"
+                % (sorted(set(ap) - set(bp))[:10], sorted(set(bp) - set(ap))[:10],
+                   sorted(p for p in set(ap) & set(bp) if ap[p] != bp[p])[:10]))
+          sys.exit(1)
+          PY
+
+      # golden 两步放在 build 之前:eval_retrieval 是纯 ID 比对,不读 site/ 也不读 state/,
+      # 裸 clone 就能跑——顺带证明门禁这一环不依赖派生物。
+      # 注:位置参数是 run 文件,--golden/--check-golden 是带值选项;两者的相对路径都按
+      # --root 解析(写成 knowledge/evals/... 会拼成 knowledge/knowledge/... 直接 exit 2)。
+      - name: golden 题集机检(W-UPG-2)
+        run: python3 tools/eval_retrieval.py --root knowledge --check-golden evals/golden.jsonl
+
+      - name: golden 回归不回退 P≥1.000 / R≥0.958(W-UPG-2)
+        run: |
+          python3 tools/eval_retrieval.py --root knowledge --json \
+            evals/runs/2026-07-20-baseline.jsonl > "$RUNNER_TEMP/eval.json"
+          python3 - <<'PY'
+          import json, os, sys
+          s = json.load(open(os.environ["RUNNER_TEMP"] + "/eval.json"))["summary"]
+          print(s)
+          sys.exit(0 if (s["precision"] >= 1.0 and s["recall"] >= 0.958
+                         and s["problem_q"] == 0) else 1)
+          PY
+
+      # 必须先 build:本仓不提交 knowledge/ 的 site/(根 .gitignore)与 wiki/backlinks.md,
+      # 裸 clone 直接 lint 会 exit 1——实测唯一的 error 是 W-IDX-1 判 backlinks.md 缺失;
+      # site/agent/*.jsonl 三缺只报 W-IDX-2 soft warning(不改退出码),但也该一并清掉。
+      # 反过来也别写「build 后 git diff --exit-code」当门禁:build_index 把 updated: 写成
+      # 当天日期且无 --date 旗标,那种门禁除当天外必红。派生物新鲜度只该由 lint 判。
+      - name: 派生物重建(裸 clone 后 lint 的前提)
+        run: |
+          python3 tools/build_site.py --root knowledge
+          python3 tools/build_index.py --root knowledge
+
+      - name: 实例机械 lint + frozen hash 校验(W-UPG-1)
+        run: python3 tools/lint_wiki.py --root knowledge --manifest

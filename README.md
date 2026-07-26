@@ -1,6 +1,6 @@
 # llmwiki — 给每个项目一座 agent 自己维护的说明书库
 
-> v1.1.1 · 纯文件 · 零第三方依赖 · MIT
+> v1.4.0 · 纯文件 · 零第三方依赖 · MIT
 
 > **English summary** — the rest of this document is in Chinese.
 >
@@ -11,6 +11,29 @@
 > **How**: clone → say `/wiki-init` in Claude Code (three modes: embedded into an existing repo / greenfield / adopt; rendering is done by a deterministic tool, never hand-written) → drop a note into `raw/inbox/` → say "ingest it". From then on the daily loop is just talking to the agent: capture → sync → ingest → query → lint → golden.
 >
 > **Proof over promises**: the protocol was measured on the 600+-page production knowledge base that incubated it (59.6K → 7.1K tokens per question, 8/8 honest refusals — external to this repo, not reproducible here) and on the in-repo dogfood instance `knowledge/` (golden baseline P 1.000 / R 0.958, reproducible from `knowledge/evals/`). Instance measurements, not universal claims.
+
+---
+
+## 60 秒上手
+
+**克隆(完整工具链,推荐)—— 两步到首次入库:**
+
+```bash
+git clone https://github.com/Cy4nLiang/llmwiki && cd llmwiki
+```
+
+在 Claude Code 里说 `/wiki-init`(向导确定性渲染出实例骨架)→ 把第一篇材料丢进 `raw/inbox/` 说「ingest 这篇」。之后日常闭环只是说话:捕获 → sync → ingest → query → lint → golden(详见下方《怎么用》)。
+
+**作为 Claude Code 插件安装(只要三向导):**
+
+```
+/plugin marketplace add Cy4nLiang/llmwiki
+/plugin install llmwiki@llmwiki
+```
+
+即得 `/wiki-init`、`/wiki-upgrade`、`/wiki-golden` 三个斜杠向导。注:插件只分发向导 skill;渲染 / 升级 / 检索仍由随框架 clone 的 `tools/`(纯标准库)执行,向导会引导定位——**插件是"拿到向导"的便捷通道,完整工具链仍以 clone 为准。**
+
+> 亦有 `npx add-skill Cy4nLiang/llmwiki`——但它装到 `~/.agents/skills/`,而 Claude Code 读 `~/.claude/skills/`,需自行 relink;原生 `/plugin` 通道无此坑,优先用它。
 
 ---
 
@@ -81,9 +104,24 @@ python3 tools/lint_wiki.py --check-slots --target <实例目录>   # 冒烟:零�
 **工程上的硬保证**:
 
 - **确定性**:实例的出生与升级全程由工具执行,agent 不手写协议正文(唯一例外:embedded 宿主指针段由 agent 依固定模板逐字追加);
-- **零依赖**:全部工具 Python 标准库;`python3 tests/run_ci.py` 一条命令 134 断言全闭环回归(含模拟升级四路径);
+- **零依赖**:全部工具 Python 标准库;`python3 tests/run_ci.py` 一条命令 256 断言全闭环回归(含模拟升级四路径);
 - **升级契约**:逐文件三档归属(frozen / render-once / instance)+ sha256 派生清单 + 语义化版本 + 逐版本迁移清单(`framework/UPGRADING.md`),协议自身的每次演进都走自己的升级流程;
-- **评测闭环 day-one**:golden schema(8 题型,含 unanswerable 诚实探针与路由入口题)+ 零 LLM 确定性打分器 + any-of 组结算——协议改动可量化验收,模型选型用自家数据实测(「便宜模型不吃协议红利」已写入 playbook 警示)。
+- **评测闭环 day-one**:golden schema(9 题型,含 keyword-miss 排名检索探针、unanswerable 诚实探针与路由入口题)+ 零 LLM 确定性打分器 + any-of 组结算——协议改动可量化验收,模型选型用自家数据实测(「便宜模型不吃协议红利」已写入 playbook 警示)。
+
+### 放到 LLM-Wiki 浪潮里看
+
+llmwiki 是 Karpathy 提出的 **LLM-Wiki 模式**(2026-04)的一个工程化实现。同类项目多聚焦"让 agent 有个知识库",llmwiki 的差异化是把它做成**可回归、可升级、可审计**的工程件(下表为 2026-07 GitHub 调研快照,★ 数与判定仅供定位参考):
+
+| 项目 | 检索 | 评测门禁 | 升级契约 | 依赖 |
+|---|---|---|---|---|
+| **llmwiki** | grep + BM25 排名(`tools/search.py`) | ✅ golden 9 题型 + 零 LLM 确定性打分器 | ✅ 三档归属 + sha256 派生清单 + 逐版本迁移 | 零(纯 Python 标准库) |
+| karpathy-llm-wiki(1.6k★) | grep(宣言式极简) | — | — | 零 |
+| llm-wiki-agent(3.3k★) | 图谱双通道 | — | — | Node |
+| obsidian-wiki(3.0k★) | 全文 + 图谱 | — | — | Obsidian |
+| basic-memory(3.5k★) | 语义 / SQL(MCP) | — | — | MCP 服务 |
+| RAG / mem0 / cognee 等 | 向量检索 | — | — | embedding + 向量库 |
+
+**四大独有资产**:golden eval 门禁(协议改动可量化验收)· 升级契约(frozen / render-once / instance 三档 + 语义化版本)· 零依赖确定性渲染(同 config 两次逐字节相同)· 诚实协议(unanswerable 探针 + 纠偏区永久登记被推翻过的参数记忆事实域)。
 
 ## 示例实例:knowledge/
 
@@ -111,17 +149,17 @@ python3 tools/lint_wiki.py --check-slots --target <实例目录>   # 冒烟:零�
 
 ```
 llmwiki/
-├── CLAUDE.template.md      实例契约骨架(槽位 + 命名锚点 + 27 条 W-* 规则 ID + 条件模块)
+├── CLAUDE.template.md      实例契约骨架(槽位 + 命名锚点 + 31 条 W-* 规则 ID + 条件模块)
 ├── wiki.config.example.json 实例唯一配置示例(schema/ 校验)
 ├── .claude/                向导 skills(wiki-init / wiki-upgrade / wiki-golden)+ 页面骨架规则 + wiki-reader
-├── templates/              渲染进实例的 meta 页骨架与本地工作流 skills(ingest/query/lint/sync)
+├── templates/              渲染进实例的 meta 页骨架与本地工作流 skills(ingest/query/lint/sync/bootstrap/research)
 ├── tools/                  frozen 工具链:init_render / sync / build_site / build_index / lint_wiki
 │                           / eval_retrieval / eval_compare / upgrade / gen_manifest + lib/fm.py(纯标准库)
 ├── adapters/               fetcher 契约 + 两型 skeleton + local_notes(inbox 开箱即用)
-├── evals/                  golden schema + 8 题型模板 + 执行 playbook
+├── evals/                  golden schema + 9 题型模板 + 执行 playbook
 ├── framework/              VERSION / MANIFEST(派生)/ RULES(规则 ID 总表)/ UPGRADING(逐版本迁移)
 ├── extras/                 可选组件:本地阅读器 serve.py / 双语增强 i18n_link.py
-├── tests/                  hello-wiki 合成夹具 + run_ci.py(134 断言全闭环)
+├── tests/                  hello-wiki 合成夹具 + run_ci.py(256 断言全闭环)
 ├── knowledge/              示例实例(框架自身开发知识库,dogfood)
 └── docs/  schema/  CONTRIBUTING.md  LICENSE(MIT)
 ```
