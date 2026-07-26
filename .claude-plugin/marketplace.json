@@ -1,0 +1,21 @@
+{
+  "name": "llmwiki",
+  "owner": {
+    "name": "Cy4nLiang",
+    "url": "https://github.com/Cy4nLiang/llmwiki"
+  },
+  "plugins": [
+    {
+      "name": "llmwiki",
+      "source": ".",
+      "version": "1.4.0",
+      "description": "给每个项目一座 agent 自己维护的复利型知识库:纯文件、grep-first、零第三方依赖;装上即得 /wiki-init /wiki-upgrade /wiki-golden 三个向导。",
+      "author": {"name": "Cy4nLiang"},
+      "homepage": "https://github.com/Cy4nLiang/llmwiki",
+      "repository": "https://github.com/Cy4nLiang/llmwiki",
+      "license": "MIT",
+      "category": "knowledge",
+      "keywords": ["knowledge-base", "llm-wiki", "agent-memory", "grep", "zero-dependency"]
+    }
+  ]
+}

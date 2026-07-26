@@ -506,6 +506,8 @@ def compute_slots(cfg, fw_version):
         "- `python3 tools/sync.py`:跑全部管线采集 + 打印待 ingest 积压" + _m2("sync.py"),
         "- `python3 tools/sync.py status`:不联网看积压" + _m2("sync.py"),
         "- `python3 tools/build_site.py && python3 tools/build_index.py`:索引派生(内容/description 变更后必跑,W-IDX-1)" + _m2("build_site.py", "build_index.py"),
+        "- `python3 tools/search.py \"关键词\"`:BM25 排名检索(关键词不确定时补 grep;W-IDX-3)" + _m2("search.py"),
+        "- `python3 tools/bootstrap_scan.py`:冷启动只读扫宿主 repo 产 ingest 候选(候选≠投递,W-CAP-1)" + _m2("bootstrap_scan.py"),
         "- `python3 tools/lint_wiki.py`:完整机械 lint(断链/预算/新鲜度/staleness;`--manifest` 校验 frozen,W-UPG-1)",
         "- `python3 tools/eval_retrieval.py evals/golden.jsonl`:golden 回归(W-UPG-2)" + _m2("eval_retrieval.py"),
         "- `python3 tools/init_render.py --config wiki.config.json --target .`:补渲染/升级(已存在文件默认跳过)",
@@ -887,7 +889,8 @@ def main(argv=None):
         warnings.append("框架 schema/ 缺失,跳过拷贝")
     if not copy_tree(w, fw_root / "adapters", "adapters"):
         warnings.append("框架 adapters/ 缺失,跳过拷贝(CONTRACT/local_notes/skeleton 不可用)")
-    if not copy_tree(w, fw_root / "docs", "docs"):
+    # design-docs 是开发过程文档,不属框架分发面(与 gen_manifest EXCLUDE 同名同口径)
+    if not copy_tree(w, fw_root / "docs", "docs", skip_dirs=("design-docs",)):
         warnings.append("框架 docs/ 缺失,跳过拷贝(skills 内 docs/ 指针将悬空)")
 
     # config 落位 + framework/{VERSION,base/} 快照(升级三方合并的 base)
